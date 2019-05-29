@@ -1,0 +1,15 @@
+[target.asmjs-unknown-emscripten]
+rustflags = [
+    "-C", "link-arg=-s",
+    "-C", "link-arg=USE_WEBGL2=1",
+    "-C", "link-arg=-s",
+    "-C", "link-arg=ALLOW_MEMORY_GROWTH=1"
+]
+
+[target.wasm32-unknown-emscripten]
+rustflags = [
+    "-C", "link-arg=-s",
+    "-C", "link-arg=USE_WEBGL2=1",
+    "-C", "link-arg=-s",
+    "-C", "link-arg=ALLOW_MEMORY_GROWTH=1"
+]
