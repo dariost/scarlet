@@ -1,0 +1,9 @@
+[package]
+name = "scarlet"
+version = "0.0.1"
+authors = ["Dario Ostuni <dario.ostuni@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+glad-gles2 = { path = "deps/glad-gles2" }
+glutin = "0.21"
