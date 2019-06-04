@@ -1,63 +1,95 @@
 extern crate glad_gles2;
 extern crate glutin;
-#[cfg(target_os = "emscripten")]
-mod emscripten;
+extern crate scarlet;
+#[macro_use]
+extern crate log;
 
+use core::ptr::null;
 use glad_gles2::gl;
+use scarlet::logging;
+use scarlet::{Application, Shader, ShaderType};
+use std::ffi::c_void;
+use std::mem::size_of;
 
 fn main() {
-    let mut events_loop = glutin::EventsLoop::new();
+    let width: f32 = 1280.0;
+    let height: f32 = 720.0;
+    logging::init();
     let window_builder = glutin::WindowBuilder::new()
         .with_title("Hello triangle!")
-        .with_dimensions(glutin::dpi::LogicalSize::new(1280.0, 720.0))
+        .with_dimensions(glutin::dpi::LogicalSize::new(width.into(), height.into()))
         .with_resizable(false);
-    #[cfg(not(target_os = "emscripten"))]
-    let gl_version = glutin::GlRequest::GlThenGles {
-        opengl_version: (4, 3),
-        opengles_version: (3, 0),
-    };
-    #[cfg(target_os = "emscripten")]
-    let gl_version = glutin::GlRequest::Specific(glutin::Api::WebGl, (2, 0));
-    let windowed_context = glutin::ContextBuilder::new()
-        .with_gl(gl_version)
-        .with_vsync(true)
-        .build_windowed(window_builder, &events_loop)
-        .unwrap();
-    let windowed_context = unsafe { windowed_context.make_current().unwrap() };
-    gl::load(|s| windowed_context.get_proc_address(s) as *const std::ffi::c_void);
-    unsafe {
-        gl::ClearColor(1.0, 0.0, 0.0, 1.0);
-        let version = gl::GetString(gl::GL_VERSION);
-        println!(
-            "OpenGL version: {}",
-            std::ffi::CStr::from_ptr(version as *const i8)
-                .to_str()
-                .unwrap()
-        );
-    }
-    let mut cycle = move || {
-        let mut should_stop = false;
+    let mut app = Application::new(window_builder, true);
+    scarlet::init(&mut app, |app| {
+        let limit = (2.0 / f32::sqrt(3.0)) * (height / width);
+        #[rustfmt::skip]
+        let triangle: Vec<f32> = vec![
+            -limit, -1.0, 0.0, 1.0, 0.0, 0.0,
+             limit, -1.0, 0.0, 0.0, 1.0, 0.0,
+               0.0,  1.0, 0.0, 0.0, 0.0, 1.0
+        ];
+        let mut vbo: gl::GLuint = 0;
+        let mut vao: gl::GLuint = 0;
         unsafe {
-            gl::Clear(gl::GL_COLOR_BUFFER_BIT);
+            gl::GenVertexArrays(1, &mut vao);
+            gl::GenBuffers(1, &mut vbo);
+            gl::BindVertexArray(vao);
+            gl::BindBuffer(gl::GL_ARRAY_BUFFER, vbo);
+            gl::BufferData(
+                gl::GL_ARRAY_BUFFER,
+                (triangle.len() * size_of::<gl::GLfloat>()) as isize,
+                triangle.as_ptr() as *const c_void,
+                gl::GL_STATIC_DRAW,
+            );
+            gl::VertexAttribPointer(
+                0,
+                3,
+                gl::GL_FLOAT,
+                gl::GL_FALSE,
+                6 * size_of::<gl::GLfloat>() as i32,
+                null(),
+            );
+            gl::VertexAttribPointer(
+                1,
+                3,
+                gl::GL_FLOAT,
+                gl::GL_FALSE,
+                6 * size_of::<gl::GLfloat>() as i32,
+                null::<c_void>().offset(3 * size_of::<gl::GLfloat>() as isize),
+            );
+            gl::EnableVertexAttribArray(0);
+            gl::EnableVertexAttribArray(1);
+            gl::BindBuffer(gl::GL_ARRAY_BUFFER, 0);
+            gl::BindVertexArray(0);
         }
-        events_loop.poll_events(|e| {
-            println!("{:?}", e);
-            match e {
+        let mut shader = Shader::new();
+        shader.attach(include_str!("shader.vert"), ShaderType::Vertex);
+        shader.attach(include_str!("shader.frag"), ShaderType::Fragment);
+        shader.compile();
+        let cycle = move |ev: &mut glutin::EventsLoop| {
+            let mut should_stop = false;
+            unsafe {
+                gl::Clear(gl::GL_COLOR_BUFFER_BIT);
+                shader.activate();
+                gl::BindVertexArray(vao);
+                gl::DrawArrays(gl::GL_TRIANGLES, 0, 3);
+                gl::BindVertexArray(0);
+                gl::Flush();
+                trace!("glGetError() = {}", gl::GetError());
+            }
+            ev.poll_events(|e| match e {
                 glutin::Event::WindowEvent {
                     event: glutin::WindowEvent::CloseRequested,
                     ..
                 } => should_stop = true,
                 _ => {}
-            }
-        });
-        windowed_context.swap_buffers().unwrap();
-        std::thread::yield_now();
-        !should_stop
-    };
-    #[cfg(target_os = "emscripten")]
-    emscripten::set_main_loop_callback(|| {
-        cycle();
+            });
+            !should_stop
+        };
+        app.run(cycle);
+        unsafe {
+            gl::DeleteVertexArrays(1, &mut vao);
+            gl::DeleteBuffers(1, &mut vbo);
+        }
     });
-    #[cfg(not(target_os = "emscripten"))]
-    while cycle() {}
 }
