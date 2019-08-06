@@ -6,10 +6,6 @@ edition = "2018"
 
 [dependencies]
 glad-gles2 = { path = "deps/glad-gles2" }
-glutin = "0.21"
+glutin = "0.22.0-alpha1"
 log = "0.4"
 pretty_env_logger = "0.3"
-console_log = "0.1"
-
-[patch.crates-io]
-winit = { git = "https://github.com/iceiix/winit.git", branch = "onthreadcb" }
