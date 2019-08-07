@@ -6,36 +6,17 @@ extern crate log;
 extern crate pretty_env_logger;
 
 use core::ptr::null;
-use glutin::window::{Window, WindowBuilder};
-use glutin::event_loop::{EventLoop};
-use glutin::event::{WindowEvent, Event};
-use glutin::{ContextWrapper, GlRequest, PossiblyCurrent};
 use glad_gles2::gl;
-use scarlet::{Shader, ShaderType};
+use glutin::event::{Event, StartCause, WindowEvent};
+use scarlet::{Application, ApplicationAction, Shader, ShaderType};
 use std::ffi::c_void;
 use std::mem::size_of;
-use glutin::event_loop::ControlFlow;
 
 fn main() {
-    let width: f32 = 1280.0;
-    let height: f32 = 720.0;
     pretty_env_logger::init();
-    let gl_version = GlRequest::GlThenGles {
-        opengl_version: (4, 3),
-        opengles_version: (3, 0),
-    };
-    let events = EventLoop::new();
-    let window_builder = WindowBuilder::new()
-        .with_title("Hello triangle!")
-        .with_inner_size(glutin::dpi::LogicalSize::new(width.into(), height.into()))
-        .with_resizable(false);
-    let windowed_context = glutin::ContextBuilder::new()
-        .with_gl(gl_version)
-        .with_vsync(true)
-        .build_windowed(window_builder, &events)
-        .unwrap();
-    let context = unsafe { windowed_context.make_current().unwrap() };
-    gl::load(|s| context.get_proc_address(s) as *const std::ffi::c_void);
+    let app = Application::with_title("Hello triangle!");
+    let (width, height) = app.size();
+    let (width, height) = (width as f32, height as f32);
     let limit = (2.0 / f32::sqrt(3.0)) * (height / width);
     #[rustfmt::skip]
     let triangle: Vec<f32> = vec![
@@ -81,28 +62,30 @@ fn main() {
     shader.attach(include_str!("shader.vert"), ShaderType::Vertex);
     shader.attach(include_str!("shader.frag"), ShaderType::Fragment);
     shader.compile();
-    events.run(move |ev, _, cf| {
-        *cf = ControlFlow::Wait;
+    app.run(move |ev| {
+        trace!("{:?}", ev);
         match ev {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 ..
-            } => *cf = ControlFlow::Exit,
+            } => ApplicationAction::Quit,
             Event::WindowEvent {
                 event: WindowEvent::RedrawRequested,
                 ..
-            } => unsafe {
+            }
+            | Event::NewEvents(StartCause::Poll) => unsafe {
                 gl::Clear(gl::GL_COLOR_BUFFER_BIT);
                 shader.activate();
                 gl::BindVertexArray(vao);
                 gl::DrawArrays(gl::GL_TRIANGLES, 0, 3);
                 gl::BindVertexArray(0);
                 gl::Flush();
-                context.swap_buffers().unwrap();
+                ApplicationAction::Refresh
             },
-            _ => {}
-        };
+            _ => ApplicationAction::Nothing,
+        }
     });
+    #[allow(unreachable_code)]
     unsafe {
         gl::DeleteVertexArrays(1, &mut vao);
         gl::DeleteBuffers(1, &mut vbo);

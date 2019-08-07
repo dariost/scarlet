@@ -1,3 +1,4 @@
+use crate::have_gl;
 use glad_gles2::gl;
 use std::ffi::{CStr, CString};
 use std::ptr::null;
@@ -24,14 +25,14 @@ pub struct Shader {
 
 impl Drop for Shader {
     fn drop(&mut self) {
-        if self.ready {
+        if have_gl() {
             unsafe {
-                gl::DeleteProgram(self.program);
-            }
-        }
-        for i in &self.shader {
-            unsafe {
-                gl::DeleteShader(*i);
+                if self.ready {
+                    gl::DeleteProgram(self.program);
+                }
+                for i in &self.shader {
+                    gl::DeleteShader(*i);
+                }
             }
         }
     }
@@ -71,8 +72,7 @@ impl Shader {
                 let cstr = CStr::from_bytes_with_nul(&buffer)
                     .unwrap()
                     .to_string_lossy();
-                error!("Cannot compile shader: {}", cstr);
-                panic!();
+                panic!("Cannot compile shader: {}", cstr);
             }
         }
         self.shader.push(shdr);
@@ -99,8 +99,7 @@ impl Shader {
                 let cstr = CStr::from_bytes_with_nul(&buffer)
                     .unwrap()
                     .to_string_lossy();
-                error!("Cannot link shader: {}", cstr);
-                panic!();
+                panic!("Cannot link shader: {}", cstr);
             }
         }
         self.program = program;
