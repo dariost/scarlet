@@ -73,7 +73,7 @@ fn main() {
                 event: WindowEvent::RedrawRequested,
                 ..
             }
-            | Event::NewEvents(StartCause::Poll) => unsafe {
+            | Event::NewEvents(StartCause::ResumeTimeReached { .. }) => unsafe {
                 gl::Clear(gl::GL_COLOR_BUFFER_BIT);
                 shader.activate();
                 gl::BindVertexArray(vao);

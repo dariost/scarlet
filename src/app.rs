@@ -7,6 +7,18 @@ use glutin::{ContextBuilder, GlProfile, GlRequest, PossiblyCurrent, WindowedCont
 use std::env::var;
 use std::ffi::CStr;
 use std::thread::yield_now;
+use std::time::{Duration, Instant};
+
+#[cfg(target_os = "linux")]
+fn is_wayland(ev: &EventLoop<()>) -> bool {
+    use glutin::platform::unix::EventLoopExtUnix;
+    ev.is_wayland()
+}
+
+#[cfg(not(target_os = "linux"))]
+fn is_wayland(_: &EventLoop) -> bool {
+    false
+}
 
 thread_local! {
     pub(crate) static GL: std::cell::Cell<bool> = std::cell::Cell::new(false);
@@ -25,6 +37,7 @@ pub struct Application {
     pub context: WindowedContext<PossiblyCurrent>,
     width: u32,
     height: u32,
+    interval: Duration,
 }
 
 pub struct ApplicationOptions {
@@ -33,6 +46,7 @@ pub struct ApplicationOptions {
     vsync: bool,
     width: u32,
     height: u32,
+    fps: f32,
 }
 
 pub enum ApplicationAction {
@@ -96,15 +110,33 @@ impl Application {
             );
         }
         let logic_size = context.window().inner_size();
-        let current_monitor = context.window().current_monitor();
+        let current_monitor = if is_wayland(&event_loop) {
+            event_loop.primary_monitor()
+        } else {
+            context.window().current_monitor()
+        };
         let physical_size = logic_size.to_physical(current_monitor.hidpi_factor());
         let (width, height) = (physical_size.width as u32, physical_size.height as u32);
         info!("Window size: {}×{}", width, height);
+        let interval = if options.fps > 0.0 {
+            Duration::from_micros((1000000.0 / options.fps) as u64)
+        } else {
+            Duration::from_millis(1)
+        };
+        info!(
+            "Max framerate: {} fps",
+            if options.fps > 0.0 {
+                format!("{}", options.fps)
+            } else {
+                String::from("∞")
+            }
+        );
         Application {
             event_loop,
             context,
             width,
             height,
+            interval,
         }
     }
 
@@ -114,18 +146,22 @@ impl Application {
 
     pub fn run<T: 'static + Fn(Event<()>) -> ApplicationAction>(self, f: T) -> ! {
         let context = self.context;
+        let interval = self.interval;
+        let mut next_refresh = Instant::now() + interval;
         self.event_loop.run(move |ev, _wt, cf| {
-            *cf = ControlFlow::Poll;
             let action = f(ev);
             match action {
                 ApplicationAction::Refresh => {
                     context.swap_buffers().expect("Cannot swap buffers");
+                    next_refresh = Instant::now() + interval;
+                    *cf = ControlFlow::WaitUntil(next_refresh);
                 }
                 ApplicationAction::Quit => {
                     set_gl(false);
                     *cf = ControlFlow::Exit
                 }
                 ApplicationAction::Nothing => {
+                    *cf = ControlFlow::WaitUntil(next_refresh);
                     yield_now();
                 }
             }
@@ -140,9 +176,14 @@ impl Default for ApplicationOptions {
             fullscreen: var("SCARLET_FULLSCREEN")
                 .ok()
                 .map_or(false, |s| s.parse::<usize>().unwrap_or(0) != 0),
-            vsync: false,
+            vsync: var("SCARLET_VSYNC")
+                .ok()
+                .map_or(false, |s| s.parse::<usize>().unwrap_or(0) != 0),
             width: 1280,
             height: 720,
+            fps: var("SCARLET_FPS")
+                .ok()
+                .map_or(0.0, |s| s.parse::<f32>().unwrap_or(0.0)),
         }
     }
 }
