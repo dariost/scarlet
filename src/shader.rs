@@ -1,4 +1,4 @@
-use crate::have_gl;
+use crate::{have_debug_gl, have_gl};
 use glad_gles2::gl;
 use std::ffi::{CStr, CString};
 use std::ptr::null;
@@ -56,10 +56,23 @@ impl Shader {
     }
 
     pub fn attach(&mut self, source: &str, kind: ShaderType) {
+        self.attach_with_name(source, kind, "NULL");
+    }
+
+    pub fn attach_with_name(&mut self, source: &str, kind: ShaderType, debug_name: &str) {
         let shdr;
         let source = CString::new(source).unwrap();
         unsafe {
             shdr = gl::CreateShader(kind.gl_type());
+            if have_debug_gl() {
+                let debug_name = debug_name.as_bytes();
+                gl::ObjectLabelKHR(
+                    gl::GL_SHADER_KHR,
+                    shdr,
+                    debug_name.len() as i32,
+                    debug_name.as_ptr() as *const i8,
+                );
+            }
             gl::ShaderSource(shdr, 1, &source.as_ptr(), null());
             gl::CompileShader(shdr);
             let mut status: gl::GLint = 0;
@@ -79,12 +92,25 @@ impl Shader {
     }
 
     pub fn compile(&mut self) {
+        self.compile_with_name("NULL");
+    }
+
+    pub fn compile_with_name(&mut self, debug_name: &str) {
         if self.ready {
             return;
         }
         let program;
         unsafe {
             program = gl::CreateProgram();
+            if have_debug_gl() {
+                let debug_name = debug_name.as_bytes();
+                gl::ObjectLabelKHR(
+                    gl::GL_PROGRAM_KHR,
+                    program,
+                    debug_name.len() as i32,
+                    debug_name.as_ptr() as *const i8,
+                );
+            }
             for i in &self.shader {
                 gl::AttachShader(program, *i);
             }
