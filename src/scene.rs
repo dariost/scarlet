@@ -1,3 +1,4 @@
+use gltf::khr_lights_punctual::Kind;
 use na::geometry::{Perspective3, Quaternion, Similarity3, Translation3, UnitQuaternion};
 use nalgebra as na;
 use std::cell::RefCell;
@@ -16,8 +17,22 @@ pub struct RealSceneNode {
     children: Vec<SceneNode>,
     parent: Option<Weak<RefCell<RealSceneNode>>>,
     name: String,
-    camera: Option<Perspective3<f32>>,
-    light: Option<()>,
+    camera: Option<Camera>,
+    light: Option<Light>,
+}
+
+#[derive(Debug)]
+pub struct Camera {
+    perspective: Perspective3<f32>,
+    name: String,
+}
+
+#[derive(Debug)]
+pub struct Light {
+    color: [f32; 3],
+    name: String,
+    intensity: f32,
+    directional: bool,
 }
 
 type SceneNode = Rc<RefCell<RealSceneNode>>;
@@ -74,7 +89,22 @@ pub fn import_scene(asset: &[u8], aspect_ratio: f32) -> Scene {
                 ),
                 _ => unimplemented!(),
             };
-            scene_node.borrow_mut().camera = Some(proj);
+            scene_node.borrow_mut().camera = Some(Camera {
+                perspective: proj,
+                name: String::from(ccamera.name().unwrap_or("NULL")),
+            });
+        }
+        if let Some(light) = node.light() {
+            scene_node.borrow_mut().light = Some(Light {
+                color: light.color(),
+                intensity: light.intensity(),
+                name: String::from(light.name().unwrap_or("NULL")),
+                directional: match light.kind() {
+                    Kind::Directional => true,
+                    _ => false,
+                },
+            });
+            lights.push(scene_node.clone());
         }
         for child in node.children() {
             construct_scene(&mut scene_node, child, &mut camera, &mut lights, ar);
