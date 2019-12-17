@@ -33,7 +33,7 @@ fn main() {
                 ..
             }
             | Event::NewEvents(StartCause::ResumeTimeReached { .. }) => unsafe {
-                gl::Clear(gl::GL_COLOR_BUFFER_BIT);
+                gl::Clear(gl::GL_COLOR_BUFFER_BIT | gl::GL_DEPTH_BUFFER_BIT);
                 suzanne.draw(shader);
                 gl::Flush();
                 ApplicationAction::Refresh

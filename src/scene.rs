@@ -5,9 +5,11 @@ use gltf::buffer::Source;
 use gltf::khr_lights_punctual::Kind;
 use na::geometry::{Perspective3, Point3, Quaternion, Similarity3, Translation3, UnitQuaternion};
 use nalgebra as na;
+use nalgebra::base::Vector3;
 use std::cell::RefCell;
 use std::mem::size_of;
 use std::os::raw::c_void;
+use std::process::exit;
 use std::ptr::null;
 use std::rc::{Rc, Weak};
 
@@ -216,7 +218,7 @@ pub fn import_scene(asset: &[u8], aspect_ratio: f32) -> Scene {
         scene_node.name = String::from(node.name().unwrap_or("NULL"));
         let (translation, rotation, scaling) = node.transform().decomposed();
         let translation = Translation3::<f32>::new(translation[0], translation[1], translation[2]);
-        let rotation = Quaternion::<f32>::new(rotation[0], rotation[1], rotation[2], rotation[3]);
+        let rotation = Quaternion::<f32>::new(rotation[3], rotation[0], rotation[1], rotation[2]);
         let rotation = UnitQuaternion::<f32>::from_quaternion(rotation);
         if scaling[0] != scaling[1] || scaling[1] != scaling[2] {
             warn!("Non uniform scaling is not supported!");
@@ -234,7 +236,7 @@ pub fn import_scene(asset: &[u8], aspect_ratio: f32) -> Scene {
                     p.aspect_ratio().unwrap_or(ar),
                     p.yfov(),
                     p.znear(),
-                    p.zfar().unwrap_or(10e9),
+                    p.zfar().unwrap_or(1e9),
                 ),
                 _ => unimplemented!(),
             };
@@ -295,36 +297,29 @@ impl Scene {
         const MAX_LIGHTS: usize = 16;
         shader.activate();
         let mut camera_transform = Similarity3::<f32>::identity();
-        let perspective = self
-            .camera
-            .clone()
-            .borrow()
-            .camera
-            .as_ref()
-            .unwrap()
-            .perspective
-            .to_homogeneous();
+        let perspective = self.camera.borrow().camera.as_ref().unwrap().perspective;
+        let projection = perspective.to_projective();
         let mut light_info = Vec::new();
         let mut node = Some(Rc::downgrade(&self.camera));
         while let Some(cn) = node {
             let cn = cn.upgrade().expect("Camera unalloc'd");
-            camera_transform = camera_transform * cn.borrow().transform;
+            camera_transform = cn.borrow().transform * camera_transform;
             node = cn.borrow().parent.clone();
         }
-        let cm = perspective * camera_transform.to_homogeneous();
+        let cm = projection * camera_transform.inverse();
         for light in &self.lights {
             let lstruct = light.borrow().light.clone().unwrap();
             let mut node = Some(Rc::downgrade(&light));
             let mut light_transform = Similarity3::<f32>::identity();
             while let Some(ln) = node {
                 let ln = ln.upgrade().expect("Light unalloc'd");
-                light_transform = ln.borrow().transform.inverse() * light_transform;
+                light_transform = ln.borrow().transform * light_transform;
                 node = ln.borrow().parent.clone();
             }
             let point = light_transform.transform_point(&Point3::<f32>::new(0.0, 0.0, 0.0));
             light_info.push((point, lstruct));
         }
-        shader.uniformMat4f("camera", cm.into());
+        shader.uniformMat4f("camera", cm.to_homogeneous().into());
         shader.uniform1ui("n_lights", light_info.len() as u32);
         for i in 0..light_info.len() {
             if i >= MAX_LIGHTS {
@@ -345,7 +340,7 @@ impl Scene {
         }
         let mut queue = vec![(self.root.clone(), Similarity3::<f32>::identity())];
         while let Some(mut node) = queue.pop() {
-            node.1 = node.1 * node.0.borrow().transform.inverse();
+            node.1 = node.1 * node.0.borrow().transform;
             if let Some(mesh) = &node.0.borrow().mesh {
                 let trans_matrix = node.1.to_homogeneous().into();
                 shader.uniformMat4f("world", trans_matrix);

@@ -167,6 +167,7 @@ impl Application {
                 gl::Enable(gl::GL_DEBUG_OUTPUT_KHR);
                 gl::DebugMessageCallbackKHR(gldebug, null());
             }
+            gl::Enable(gl::GL_DEPTH_TEST);
             gl::ClearColor(0.0, 0.0, 0.0, 1.0);
             let opengl_version = gl::GetString(gl::GL_VERSION);
             info!(

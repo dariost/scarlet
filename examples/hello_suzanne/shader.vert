@@ -18,6 +18,9 @@ uniform mat4 world;
 layout(location = 0) in vec3 vertPos;
 layout(location = 1) in vec3 vertNorm;
 
+out vec3 norm;
+
 void main() {
-    gl_Position = world * vec4(vertPos, 1.0);
+    gl_Position = camera * world * vec4(vertPos, 1.0);
+    norm = vertNorm;
 }
