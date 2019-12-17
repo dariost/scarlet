@@ -1,10 +1,9 @@
 use crate::have_gl;
+use crate::shader::Shader;
 use glad_gles2::gl;
-use gltf::accessor::DataType;
 use gltf::buffer::Source;
 use gltf::khr_lights_punctual::Kind;
-use gltf::mesh::Semantic;
-use na::geometry::{Perspective3, Quaternion, Similarity3, Translation3, UnitQuaternion};
+use na::geometry::{Perspective3, Point3, Quaternion, Similarity3, Translation3, UnitQuaternion};
 use nalgebra as na;
 use std::cell::RefCell;
 use std::mem::size_of;
@@ -36,7 +35,7 @@ pub struct Camera {
     name: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Light {
     color: [f32; 3],
     name: String,
@@ -51,12 +50,30 @@ pub struct RenderData {
     mode: gl::GLuint,
     material: Material,
     buffer: Vec<f32>,
+    n_elements: i32,
+}
+
+impl RenderData {
+    pub fn draw(&self, shader: &mut Shader) {
+        unsafe {
+            gl::BindVertexArray(self.vao);
+            gl::DrawArrays(self.mode, 0, self.n_elements);
+        }
+    }
 }
 
 #[derive(Debug)]
 pub struct Mesh {
     name: String,
     data: Vec<RenderData>,
+}
+
+impl Mesh {
+    pub fn draw(&self, shader: &mut Shader) {
+        for rd in &self.data {
+            rd.draw(shader);
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -101,6 +118,7 @@ impl RenderData {
             mode: 0,
             material: Material::default(),
             buffer: Vec::new(),
+            n_elements: 0,
         };
         unsafe {
             gl::GenVertexArrays(1, &mut rd.vao);
@@ -143,6 +161,7 @@ pub fn create_mesh(mesh: gltf::Mesh, buffers: &Vec<gltf::buffer::Data>) -> Mesh 
             for j in 0..3 {
                 rd.buffer.push(norm[i][j]);
             }
+            rd.n_elements += 1;
         }
         unsafe {
             gl::BindVertexArray(rd.vao);
@@ -180,7 +199,7 @@ pub fn create_mesh(mesh: gltf::Mesh, buffers: &Vec<gltf::buffer::Data>) -> Mesh 
 }
 
 pub fn import_scene(asset: &[u8], aspect_ratio: f32) -> Scene {
-    let (document, buffers, images) = gltf::import_slice(asset).expect("Cannot import asset!");
+    let (document, buffers, _images) = gltf::import_slice(asset).expect("Cannot import asset!");
     let scene = document.scenes().nth(0).expect("No scenes in asset!");
     let mut root_node = RealSceneNode::default();
     let mut camera = None;
@@ -268,5 +287,73 @@ pub fn import_scene(asset: &[u8], aspect_ratio: f32) -> Scene {
         root: root_node,
         lights: lights,
         camera: camera.expect("There must be a camera in the scene!"),
+    }
+}
+
+impl Scene {
+    pub fn draw(&self, shader: &mut Shader) {
+        const MAX_LIGHTS: usize = 16;
+        shader.activate();
+        let mut camera_transform = Similarity3::<f32>::identity();
+        let perspective = self
+            .camera
+            .clone()
+            .borrow()
+            .camera
+            .as_ref()
+            .unwrap()
+            .perspective
+            .to_homogeneous();
+        let mut light_info = Vec::new();
+        let mut node = Some(Rc::downgrade(&self.camera));
+        while let Some(cn) = node {
+            let cn = cn.upgrade().expect("Camera unalloc'd");
+            camera_transform = camera_transform * cn.borrow().transform;
+            node = cn.borrow().parent.clone();
+        }
+        let cm = perspective * camera_transform.to_homogeneous();
+        for light in &self.lights {
+            let lstruct = light.borrow().light.clone().unwrap();
+            let mut node = Some(Rc::downgrade(&light));
+            let mut light_transform = Similarity3::<f32>::identity();
+            while let Some(ln) = node {
+                let ln = ln.upgrade().expect("Light unalloc'd");
+                light_transform = ln.borrow().transform.inverse() * light_transform;
+                node = ln.borrow().parent.clone();
+            }
+            let point = light_transform.transform_point(&Point3::<f32>::new(0.0, 0.0, 0.0));
+            light_info.push((point, lstruct));
+        }
+        shader.uniformMat4f("camera", cm.into());
+        shader.uniform1ui("n_lights", light_info.len() as u32);
+        for i in 0..light_info.len() {
+            if i >= MAX_LIGHTS {
+                error!("Too many lights: {}", light_info.len());
+                break;
+            }
+            let light = &light_info[i];
+            let post = &light.0;
+            let pos: [f32; 4] = [
+                post[0],
+                post[1],
+                post[2],
+                if light.1.directional { 0.0 } else { 1.0 },
+            ];
+            shader.uniform4f(&format!("light[{}].position", i), pos);
+            shader.uniform3f(&format!("light[{}].color", i), light.1.color);
+            shader.uniform1f(&format!("light[{}].intensity", i), light.1.intensity);
+        }
+        let mut queue = vec![(self.root.clone(), Similarity3::<f32>::identity())];
+        while let Some(mut node) = queue.pop() {
+            node.1 = node.1 * node.0.borrow().transform.inverse();
+            if let Some(mesh) = &node.0.borrow().mesh {
+                let trans_matrix = node.1.to_homogeneous().into();
+                shader.uniformMat4f("world", trans_matrix);
+                mesh.draw(shader);
+            }
+            for child in &node.0.borrow().children {
+                queue.push((child.clone(), node.1));
+            }
+        }
     }
 }

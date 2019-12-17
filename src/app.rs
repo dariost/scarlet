@@ -211,12 +211,16 @@ impl Application {
         (self.width, self.height)
     }
 
-    pub fn run<T: 'static + Fn(Event<()>) -> ApplicationAction>(self, f: T) -> ! {
+    pub fn run<U: 'static, T: 'static + Fn(&mut U, Event<()>) -> ApplicationAction>(
+        self,
+        mut up: U,
+        f: T,
+    ) -> ! {
         let context = self.context;
         let interval = self.interval;
         let mut next_refresh = Instant::now() + interval;
         self.event_loop.run(move |ev, _wt, cf| {
-            let action = f(ev);
+            let action = f(&mut up, ev);
             match action {
                 ApplicationAction::Refresh => {
                     context.swap_buffers().expect("Cannot swap buffers");

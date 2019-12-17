@@ -62,7 +62,7 @@ fn main() {
     shader.attach(include_str!("shader.vert"), ShaderType::Vertex);
     shader.attach(include_str!("shader.frag"), ShaderType::Fragment);
     shader.compile();
-    app.run(move |ev| {
+    app.run((), move |_, ev| {
         trace!("{:?}", ev);
         match ev {
             Event::WindowEvent {

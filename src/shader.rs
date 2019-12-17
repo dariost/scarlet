@@ -47,6 +47,53 @@ impl Shader {
         }
     }
 
+    pub fn uniform1ui(&mut self, name: &str, value: u32) {
+        let name = CString::new(name).expect("Cannot convert to CString");
+        unsafe {
+            let location = gl::GetUniformLocation(self.program, name.as_ptr());
+            gl::Uniform1ui(location, value);
+        }
+    }
+
+    pub fn uniform1f(&mut self, name: &str, value: f32) {
+        let name = CString::new(name).expect("Cannot convert to CString");
+        unsafe {
+            let location = gl::GetUniformLocation(self.program, name.as_ptr());
+            gl::Uniform1f(location, value);
+        }
+    }
+
+    pub fn uniform4f(&mut self, name: &str, value: [f32; 4]) {
+        let name = CString::new(name).expect("Cannot convert to CString");
+        unsafe {
+            let location = gl::GetUniformLocation(self.program, name.as_ptr());
+            gl::Uniform4fv(location, 1, value.as_ptr());
+        }
+    }
+
+    pub fn uniform3f(&mut self, name: &str, value: [f32; 3]) {
+        let name = CString::new(name).expect("Cannot convert to CString");
+        unsafe {
+            let location = gl::GetUniformLocation(self.program, name.as_ptr());
+            gl::Uniform3fv(location, 1, value.as_ptr());
+        }
+    }
+
+    #[allow(non_snake_case)]
+    pub fn uniformMat4f(&mut self, name: &str, value: [[f32; 4]; 4]) {
+        let mut mvalue = Vec::new();
+        for i in 0..4 {
+            for j in 0..4 {
+                mvalue.push(value[i][j]);
+            }
+        }
+        let name = CString::new(name).expect("Cannot convert to CString");
+        unsafe {
+            let location = gl::GetUniformLocation(self.program, name.as_ptr());
+            gl::UniformMatrix4fv(location, 1, 0, mvalue.as_ptr());
+        }
+    }
+
     pub fn activate(&self) {
         if self.ready {
             unsafe {
