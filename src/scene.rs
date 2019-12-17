@@ -5,11 +5,9 @@ use gltf::buffer::Source;
 use gltf::khr_lights_punctual::Kind;
 use na::geometry::{Perspective3, Point3, Quaternion, Similarity3, Translation3, UnitQuaternion};
 use nalgebra as na;
-use nalgebra::base::Vector3;
 use std::cell::RefCell;
 use std::mem::size_of;
 use std::os::raw::c_void;
-use std::process::exit;
 use std::ptr::null;
 use std::rc::{Rc, Weak};
 
