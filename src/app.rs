@@ -95,13 +95,13 @@ pub struct Application {
 }
 
 pub struct ApplicationOptions {
-    title: String,
-    fullscreen: bool,
-    vsync: bool,
-    width: u32,
-    height: u32,
-    fps: f32,
-    debug_gl: bool,
+    pub title: String,
+    pub fullscreen: bool,
+    pub vsync: bool,
+    pub width: u32,
+    pub height: u32,
+    pub fps: f32,
+    pub debug_gl: bool,
 }
 
 pub enum ApplicationAction {

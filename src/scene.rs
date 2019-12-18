@@ -20,7 +20,7 @@ pub struct Scene {
 
 #[derive(Debug)]
 pub struct RealSceneNode {
-    transform: Similarity3<f32>,
+    pub transform: Similarity3<f32>,
     children: Vec<SceneNode>,
     parent: Option<Weak<RefCell<RealSceneNode>>>,
     name: String,
@@ -291,6 +291,19 @@ pub fn import_scene(asset: &[u8], aspect_ratio: f32) -> Scene {
 }
 
 impl Scene {
+    pub fn get_node(&self, name: &str) -> Option<SceneNode> {
+        let mut queue = vec![self.root.clone()];
+        while let Some(node) = queue.pop() {
+            if name == node.borrow().name {
+                return Some(node.clone());
+            }
+            for child in &node.borrow().children {
+                queue.push(child.clone());
+            }
+        }
+        None
+    }
+
     pub fn draw(&self, shader: &mut Shader) {
         const MAX_LIGHTS: usize = 16;
         shader.activate();

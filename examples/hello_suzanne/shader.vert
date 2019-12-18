@@ -22,5 +22,5 @@ out vec3 norm;
 
 void main() {
     gl_Position = camera * world * vec4(vertPos, 1.0);
-    norm = vertNorm;
+    norm = vec3(world * vec4(vertNorm, 0));
 }
