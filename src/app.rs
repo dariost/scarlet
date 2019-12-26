@@ -102,6 +102,7 @@ pub struct ApplicationOptions {
     pub height: u32,
     pub fps: f32,
     pub debug_gl: bool,
+    pub multisampling: u16,
 }
 
 pub enum ApplicationAction {
@@ -140,6 +141,7 @@ impl Application {
         let window_builder = window_builder.with_resizable(false);
         let context_builder = ContextBuilder::new();
         let context_builder = context_builder.with_vsync(options.vsync);
+        let context_builder = context_builder.with_multisampling(options.multisampling);
         let context_builder = context_builder.with_gl(GlRequest::GlThenGles {
             opengl_version: (4, 3),
             opengles_version: (3, 0),
@@ -259,6 +261,9 @@ impl Default for ApplicationOptions {
             debug_gl: var("SCARLET_DEBUG_GL")
                 .ok()
                 .map_or(false, |s| s.parse::<usize>().unwrap_or(0) != 0),
+            multisampling: var("SCARLET_MULTISAMPLING")
+                .ok()
+                .map_or(0, |s| s.parse::<u16>().unwrap_or(0)),
         }
     }
 }

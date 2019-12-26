@@ -55,6 +55,9 @@ pub struct RenderData {
 
 impl RenderData {
     pub fn draw(&self, shader: &mut Shader) {
+        shader.uniform4f("material.albedo", self.material.color);
+        shader.uniform1f("material.metalness", self.material.metallic);
+        shader.uniform1f("material.roughness", self.material.roughness);
         unsafe {
             gl::BindVertexArray(self.vao);
             gl::DrawArrays(self.mode, 0, self.n_elements);
@@ -317,6 +320,8 @@ impl Scene {
             camera_transform = cn.borrow().transform * camera_transform;
             node = cn.borrow().parent.clone();
         }
+        let cp = camera_transform.transform_point(&Point3::<f32>::new(0.0, 0.0, 0.0));
+        shader.uniform3f("camera_pos", [cp[0], cp[1], cp[2]]);
         let cm = projection * camera_transform.inverse();
         for light in &self.lights {
             let lstruct = light.borrow().light.clone().unwrap();
