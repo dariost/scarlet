@@ -2,8 +2,8 @@
 
 precision mediump float;
 
-uniform mat4 camera;
 uniform mat4 world;
+uniform mat4 camera;
 
 layout(location = 0) in vec3 vert_pos;
 layout(location = 1) in vec3 vert_norm;

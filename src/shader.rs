@@ -3,6 +3,7 @@ use glad_gles2::gl;
 use std::ffi::{CStr, CString};
 use std::ptr::null;
 
+#[derive(Debug)]
 pub enum ShaderType {
     Vertex,
     Fragment,
@@ -17,6 +18,7 @@ impl ShaderType {
     }
 }
 
+#[derive(Debug)]
 pub struct Shader {
     shader: Vec<gl::GLuint>,
     program: gl::GLuint,

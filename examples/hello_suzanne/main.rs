@@ -20,8 +20,7 @@ fn main() {
     opt.fps = 60.0;
     let app = Application::with_options(&opt);
     let (width, height) = app.size();
-    let (width, height) = (width as f32, height as f32);
-    let suzanne = import_scene(include_bytes!("suzanne.glb"), width / height);
+    let suzanne = import_scene(include_bytes!("suzanne.glb"), width, height);
     let sm = suzanne.get_node("Suzanne").expect("No monkey!");
     let mut shader = Shader::new();
     shader.attach(include_str!("shader.vert"), ShaderType::Vertex);
@@ -45,9 +44,7 @@ fn main() {
                 sm.borrow_mut()
                     .transform
                     .append_rotation_mut(&UnitQuaternion::<f32>::from_euler_angles(0.0, 0.01, 0.0));
-
-                gl::Clear(gl::GL_COLOR_BUFFER_BIT | gl::GL_DEPTH_BUFFER_BIT);
-                suzanne.draw(shader);
+                suzanne.draw();
                 gl::Flush();
                 ApplicationAction::Refresh
             },

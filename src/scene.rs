@@ -1,5 +1,5 @@
 use crate::have_gl;
-use crate::shader::Shader;
+use crate::shader::{Shader, ShaderType};
 use glad_gles2::gl;
 use gltf::buffer::Source;
 use gltf::khr_lights_punctual::Kind;
@@ -12,10 +12,29 @@ use std::ptr::null;
 use std::rc::{Rc, Weak};
 
 #[derive(Debug)]
+struct RenderPasses {
+    g_buffer: gl::GLuint,
+    g_position: gl::GLuint,
+    g_normal: gl::GLuint,
+    g_albedo: gl::GLuint,
+    g_metalness: gl::GLuint,
+    g_roughness: gl::GLuint,
+    g_depth: gl::GLuint,
+    q_vao: gl::GLuint,
+    q_vbo: gl::GLuint,
+    r_rgb: Shader,
+    r_r: Shader,
+}
+
+#[derive(Debug)]
 pub struct Scene {
     root: SceneNode,
     camera: SceneNode,
     lights: Vec<SceneNode>,
+    width: u32,
+    height: u32,
+    passes: RenderPasses,
+    prepare_shader: Shader,
 }
 
 #[derive(Debug)]
@@ -61,6 +80,207 @@ impl RenderData {
         unsafe {
             gl::BindVertexArray(self.vao);
             gl::DrawArrays(self.mode, 0, self.n_elements);
+        }
+    }
+}
+
+impl RenderPasses {
+    pub fn new(width: gl::GLsizei, height: gl::GLsizei) -> RenderPasses {
+        let mut g_buffer: gl::GLuint = 0;
+        let mut g_position: gl::GLuint = 0;
+        let mut g_normal: gl::GLuint = 0;
+        let mut g_albedo: gl::GLuint = 0;
+        let mut g_metalness: gl::GLuint = 0;
+        let mut g_roughness: gl::GLuint = 0;
+        let mut g_depth: gl::GLuint = 0;
+        let mut q_vao: gl::GLuint = 0;
+        let mut q_vbo: gl::GLuint = 0;
+        unsafe {
+            gl::GenFramebuffers(1, &mut g_buffer);
+            gl::BindFramebuffer(gl::GL_FRAMEBUFFER, g_buffer);
+            let bind = |buf, internal_format, format, kind, attachment| {
+                gl::GenTextures(1, buf);
+                gl::BindTexture(gl::GL_TEXTURE_2D, *buf);
+                gl::TexImage2D(
+                    gl::GL_TEXTURE_2D,
+                    0,
+                    internal_format as gl::GLint,
+                    width,
+                    height,
+                    0,
+                    format,
+                    kind,
+                    null(),
+                );
+                gl::TexParameteri(
+                    gl::GL_TEXTURE_2D,
+                    gl::GL_TEXTURE_MIN_FILTER,
+                    gl::GL_NEAREST as gl::GLint,
+                );
+                gl::TexParameteri(
+                    gl::GL_TEXTURE_2D,
+                    gl::GL_TEXTURE_MAG_FILTER,
+                    gl::GL_NEAREST as gl::GLint,
+                );
+                gl::TexParameteri(
+                    gl::GL_TEXTURE_2D,
+                    gl::GL_TEXTURE_WRAP_S,
+                    gl::GL_CLAMP_TO_EDGE as gl::GLint,
+                );
+                gl::TexParameteri(
+                    gl::GL_TEXTURE_2D,
+                    gl::GL_TEXTURE_WRAP_T,
+                    gl::GL_CLAMP_TO_EDGE as gl::GLint,
+                );
+                gl::FramebufferTexture2D(
+                    gl::GL_FRAMEBUFFER,
+                    attachment,
+                    gl::GL_TEXTURE_2D,
+                    *buf,
+                    0,
+                );
+            };
+            bind(
+                &mut g_position,
+                gl::GL_RGB16F,
+                gl::GL_RGB,
+                gl::GL_HALF_FLOAT,
+                gl::GL_COLOR_ATTACHMENT0,
+            );
+            bind(
+                &mut g_normal,
+                gl::GL_RGB16F,
+                gl::GL_RGB,
+                gl::GL_HALF_FLOAT,
+                gl::GL_COLOR_ATTACHMENT1,
+            );
+            bind(
+                &mut g_albedo,
+                gl::GL_RGB,
+                gl::GL_RGB,
+                gl::GL_UNSIGNED_BYTE,
+                gl::GL_COLOR_ATTACHMENT2,
+            );
+            bind(
+                &mut g_metalness,
+                gl::GL_R16F,
+                gl::GL_RED,
+                gl::GL_HALF_FLOAT,
+                gl::GL_COLOR_ATTACHMENT3,
+            );
+            bind(
+                &mut g_roughness,
+                gl::GL_R16F,
+                gl::GL_RED,
+                gl::GL_HALF_FLOAT,
+                gl::GL_COLOR_ATTACHMENT4,
+            );
+            bind(
+                &mut g_depth,
+                gl::GL_DEPTH_COMPONENT32F,
+                gl::GL_DEPTH_COMPONENT,
+                gl::GL_FLOAT,
+                gl::GL_DEPTH_ATTACHMENT,
+            );
+            let draw_buffers = [
+                gl::GL_COLOR_ATTACHMENT0,
+                gl::GL_COLOR_ATTACHMENT1,
+                gl::GL_COLOR_ATTACHMENT2,
+                gl::GL_COLOR_ATTACHMENT3,
+                gl::GL_COLOR_ATTACHMENT4,
+            ];
+            gl::DrawBuffers(5, draw_buffers.as_ptr());
+            gl::BindFramebuffer(gl::GL_FRAMEBUFFER, 0);
+        }
+        #[rustfmt::skip]
+        let quad: Vec<f32> = vec![
+            -1.0, -1.0, 0.0, 0.0,
+            -1.0,  1.0, 0.0, 1.0,
+             1.0, -1.0, 1.0, 0.0,
+             1.0,  1.0, 1.0, 1.0
+        ];
+        unsafe {
+            gl::GenVertexArrays(1, &mut q_vao);
+            gl::GenBuffers(1, &mut q_vbo);
+            gl::BindVertexArray(q_vao);
+            gl::BindBuffer(gl::GL_ARRAY_BUFFER, q_vbo);
+            gl::BufferData(
+                gl::GL_ARRAY_BUFFER,
+                (quad.len() * size_of::<gl::GLfloat>()) as isize,
+                quad.as_ptr() as *const c_void,
+                gl::GL_STATIC_DRAW,
+            );
+            gl::VertexAttribPointer(
+                0,
+                2,
+                gl::GL_FLOAT,
+                gl::GL_FALSE,
+                4 * size_of::<gl::GLfloat>() as i32,
+                null(),
+            );
+            gl::VertexAttribPointer(
+                1,
+                2,
+                gl::GL_FLOAT,
+                gl::GL_FALSE,
+                4 * size_of::<gl::GLfloat>() as i32,
+                null::<c_void>().offset(2 * size_of::<gl::GLfloat>() as isize),
+            );
+            gl::EnableVertexAttribArray(0);
+            gl::EnableVertexAttribArray(1);
+            gl::BindBuffer(gl::GL_ARRAY_BUFFER, 0);
+            gl::BindVertexArray(0);
+        }
+        let mut r_rgb = Shader::new();
+        let mut r_r = Shader::new();
+        r_rgb.attach(include_str!("shaders/quad.vert"), ShaderType::Vertex);
+        r_rgb.attach(include_str!("shaders/quad_rgb.frag"), ShaderType::Fragment);
+        r_rgb.compile();
+        r_r.attach(include_str!("shaders/quad.vert"), ShaderType::Vertex);
+        r_r.attach(include_str!("shaders/quad_r.frag"), ShaderType::Fragment);
+        r_r.compile();
+        RenderPasses {
+            g_buffer,
+            g_position,
+            g_normal,
+            g_albedo,
+            g_metalness,
+            g_roughness,
+            g_depth,
+            q_vao,
+            q_vbo,
+            r_rgb,
+            r_r,
+        }
+    }
+    pub fn bind(&self) {
+        unsafe {
+            gl::BindFramebuffer(gl::GL_FRAMEBUFFER, self.g_buffer);
+            gl::Clear(gl::GL_COLOR_BUFFER_BIT | gl::GL_DEPTH_BUFFER_BIT);
+        }
+    }
+
+    pub fn print_buffer(&self, name: &str) {
+        unsafe {
+            gl::BindFramebuffer(gl::GL_FRAMEBUFFER, 0);
+            gl::Clear(gl::GL_COLOR_BUFFER_BIT | gl::GL_DEPTH_BUFFER_BIT);
+        }
+        let info = match name {
+            "position" => (&self.g_position, &self.r_rgb),
+            "normal" => (&self.g_normal, &self.r_rgb),
+            "albedo" => (&self.g_albedo, &self.r_rgb),
+            "metalness" => (&self.g_metalness, &self.r_r),
+            "roughness" => (&self.g_roughness, &self.r_r),
+            "depth" => (&self.g_depth, &self.r_r),
+            _ => panic!("Non existent render buffer"),
+        };
+        info.1.activate();
+        unsafe {
+            gl::BindTexture(gl::GL_TEXTURE_2D, *info.0);
+            gl::BindVertexArray(self.q_vao);
+            gl::DrawArrays(gl::GL_TRIANGLE_STRIP, 0, 4);
+            gl::BindVertexArray(0);
+            gl::BindTexture(gl::GL_TEXTURE_2D, 0);
         }
     }
 }
@@ -201,7 +421,8 @@ pub fn create_mesh(mesh: gltf::Mesh, buffers: &Vec<gltf::buffer::Data>) -> Mesh 
     Mesh { name, data }
 }
 
-pub fn import_scene(asset: &[u8], aspect_ratio: f32) -> Scene {
+pub fn import_scene(asset: &[u8], width: u32, height: u32) -> Scene {
+    let aspect_ratio = width as f32 / height as f32;
     let (document, buffers, _images) = gltf::import_slice(asset).expect("Cannot import asset!");
     let scene = document.scenes().nth(0).expect("No scenes in asset!");
     let mut root_node = RealSceneNode::default();
@@ -286,10 +507,18 @@ pub fn import_scene(asset: &[u8], aspect_ratio: f32) -> Scene {
             &buffers,
         );
     }
+    let mut shdr = Shader::new();
+    shdr.attach(include_str!("shaders/prepare.vert"), ShaderType::Vertex);
+    shdr.attach(include_str!("shaders/prepare.frag"), ShaderType::Fragment);
+    shdr.compile();
     Scene {
         root: root_node,
         lights: lights,
         camera: camera.expect("There must be a camera in the scene!"),
+        width,
+        height,
+        passes: RenderPasses::new(width as gl::GLsizei, height as gl::GLsizei),
+        prepare_shader: shdr,
     }
 }
 
@@ -307,8 +536,10 @@ impl Scene {
         None
     }
 
-    pub fn draw(&self, shader: &mut Shader) {
+    pub fn draw(&mut self) {
         const MAX_LIGHTS: usize = 16;
+        let shader = &mut self.prepare_shader;
+        self.passes.bind();
         shader.activate();
         let mut camera_transform = Similarity3::<f32>::identity();
         let perspective = self.camera.borrow().camera.as_ref().unwrap().perspective;
@@ -321,7 +552,7 @@ impl Scene {
             node = cn.borrow().parent.clone();
         }
         let cp = camera_transform.transform_point(&Point3::<f32>::new(0.0, 0.0, 0.0));
-        shader.uniform3f("camera_pos", [cp[0], cp[1], cp[2]]);
+        //shader.uniform3f("camera_pos", [cp[0], cp[1], cp[2]]);
         let cm = projection * camera_transform.inverse();
         for light in &self.lights {
             let lstruct = light.borrow().light.clone().unwrap();
@@ -336,7 +567,7 @@ impl Scene {
             light_info.push((point, lstruct));
         }
         shader.uniformMat4f("camera", cm.to_homogeneous().into());
-        shader.uniform1ui("n_lights", light_info.len() as u32);
+        /*shader.uniform1ui("n_lights", light_info.len() as u32);
         for i in 0..light_info.len() {
             if i >= MAX_LIGHTS {
                 error!("Too many lights: {}", light_info.len());
@@ -353,7 +584,7 @@ impl Scene {
             shader.uniform4f(&format!("light[{}].position", i), pos);
             shader.uniform3f(&format!("light[{}].color", i), light.1.color);
             shader.uniform1f(&format!("light[{}].intensity", i), light.1.intensity);
-        }
+        }*/
         let mut queue = vec![(self.root.clone(), Similarity3::<f32>::identity())];
         while let Some(mut node) = queue.pop() {
             node.1 = node.1 * node.0.borrow().transform;
@@ -366,5 +597,6 @@ impl Scene {
                 queue.push((child.clone(), node.1));
             }
         }
+        self.passes.print_buffer("position");
     }
 }

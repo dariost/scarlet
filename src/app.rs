@@ -102,7 +102,6 @@ pub struct ApplicationOptions {
     pub height: u32,
     pub fps: f32,
     pub debug_gl: bool,
-    pub multisampling: u16,
 }
 
 pub enum ApplicationAction {
@@ -141,7 +140,6 @@ impl Application {
         let window_builder = window_builder.with_resizable(false);
         let context_builder = ContextBuilder::new();
         let context_builder = context_builder.with_vsync(options.vsync);
-        let context_builder = context_builder.with_multisampling(options.multisampling);
         let context_builder = context_builder.with_gl(GlRequest::GlThenGles {
             opengl_version: (4, 3),
             opengles_version: (3, 0),
@@ -178,6 +176,15 @@ impl Application {
                     .to_str()
                     .unwrap()
             );
+            let mut max_draw_buffers: gl::GLint = 0;
+            let mut max_color_attachments: gl::GLint = 0;
+            gl::GetIntegerv(gl::GL_MAX_DRAW_BUFFERS, &mut max_draw_buffers);
+            gl::GetIntegerv(gl::GL_MAX_COLOR_ATTACHMENTS, &mut max_color_attachments);
+            info!("GL_MAX_DRAW_BUFFERS: {}", max_draw_buffers);
+            info!("GL_MAX_COLOR_ATTACHMENTS: {}", max_color_attachments);
+            if max_draw_buffers < 8 || max_color_attachments < 8 {
+                error!("GL_MAX_DRAW_BUFFERS or GL_MAX_COLOR_ATTACHMENTS is less than 8, expect breakage");
+            }
         }
         let logic_size = context.window().inner_size();
         let current_monitor = if is_wayland(&event_loop) {
@@ -261,9 +268,6 @@ impl Default for ApplicationOptions {
             debug_gl: var("SCARLET_DEBUG_GL")
                 .ok()
                 .map_or(false, |s| s.parse::<usize>().unwrap_or(0) != 0),
-            multisampling: var("SCARLET_MULTISAMPLING")
-                .ok()
-                .map_or(0, |s| s.parse::<u16>().unwrap_or(0)),
         }
     }
 }
