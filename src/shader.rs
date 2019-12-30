@@ -57,6 +57,14 @@ impl Shader {
         }
     }
 
+    pub fn uniform1i(&mut self, name: &str, value: i32) {
+        let name = CString::new(name).expect("Cannot convert to CString");
+        unsafe {
+            let location = gl::GetUniformLocation(self.program, name.as_ptr());
+            gl::Uniform1i(location, value);
+        }
+    }
+
     pub fn uniform1f(&mut self, name: &str, value: f32) {
         let name = CString::new(name).expect("Cannot convert to CString");
         unsafe {

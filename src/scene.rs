@@ -35,6 +35,7 @@ pub struct Scene {
     height: u32,
     passes: RenderPasses,
     prepare_shader: Shader,
+    pbr_shader: Shader,
 }
 
 #[derive(Debug)]
@@ -260,6 +261,37 @@ impl RenderPasses {
         }
     }
 
+    pub fn bind_pbr(&self, shader: &mut Shader) {
+        unsafe {
+            gl::BindFramebuffer(gl::GL_FRAMEBUFFER, 0);
+            gl::Clear(gl::GL_COLOR_BUFFER_BIT | gl::GL_DEPTH_BUFFER_BIT);
+            shader.uniform1i("position_sampler", 0);
+            shader.uniform1i("normal_sampler", 1);
+            shader.uniform1i("albedo_sampler", 2);
+            shader.uniform1i("metalness_sampler", 3);
+            shader.uniform1i("roughness_sampler", 4);
+            gl::ActiveTexture(gl::GL_TEXTURE0);
+            gl::BindTexture(gl::GL_TEXTURE_2D, self.g_position);
+            gl::ActiveTexture(gl::GL_TEXTURE1);
+            gl::BindTexture(gl::GL_TEXTURE_2D, self.g_normal);
+            gl::ActiveTexture(gl::GL_TEXTURE2);
+            gl::BindTexture(gl::GL_TEXTURE_2D, self.g_albedo);
+            gl::ActiveTexture(gl::GL_TEXTURE3);
+            gl::BindTexture(gl::GL_TEXTURE_2D, self.g_metalness);
+            gl::ActiveTexture(gl::GL_TEXTURE4);
+            gl::BindTexture(gl::GL_TEXTURE_2D, self.g_roughness);
+            gl::ActiveTexture(gl::GL_TEXTURE0);
+        }
+    }
+
+    pub fn print_quad(&self) {
+        unsafe {
+            gl::BindVertexArray(self.q_vao);
+            gl::DrawArrays(gl::GL_TRIANGLE_STRIP, 0, 4);
+            gl::BindVertexArray(0);
+        }
+    }
+
     pub fn print_buffer(&self, name: &str) {
         unsafe {
             gl::BindFramebuffer(gl::GL_FRAMEBUFFER, 0);
@@ -277,9 +309,9 @@ impl RenderPasses {
         info.1.activate();
         unsafe {
             gl::BindTexture(gl::GL_TEXTURE_2D, *info.0);
-            gl::BindVertexArray(self.q_vao);
-            gl::DrawArrays(gl::GL_TRIANGLE_STRIP, 0, 4);
-            gl::BindVertexArray(0);
+        }
+        self.print_quad();
+        unsafe {
             gl::BindTexture(gl::GL_TEXTURE_2D, 0);
         }
     }
@@ -511,6 +543,10 @@ pub fn import_scene(asset: &[u8], width: u32, height: u32) -> Scene {
     shdr.attach(include_str!("shaders/prepare.vert"), ShaderType::Vertex);
     shdr.attach(include_str!("shaders/prepare.frag"), ShaderType::Fragment);
     shdr.compile();
+    let mut pbr = Shader::new();
+    pbr.attach(include_str!("shaders/pbr.vert"), ShaderType::Vertex);
+    pbr.attach(include_str!("shaders/pbr.frag"), ShaderType::Fragment);
+    pbr.compile();
     Scene {
         root: root_node,
         lights: lights,
@@ -519,6 +555,7 @@ pub fn import_scene(asset: &[u8], width: u32, height: u32) -> Scene {
         height,
         passes: RenderPasses::new(width as gl::GLsizei, height as gl::GLsizei),
         prepare_shader: shdr,
+        pbr_shader: pbr,
     }
 }
 
@@ -552,7 +589,6 @@ impl Scene {
             node = cn.borrow().parent.clone();
         }
         let cp = camera_transform.transform_point(&Point3::<f32>::new(0.0, 0.0, 0.0));
-        //shader.uniform3f("camera_pos", [cp[0], cp[1], cp[2]]);
         let cm = projection * camera_transform.inverse();
         for light in &self.lights {
             let lstruct = light.borrow().light.clone().unwrap();
@@ -567,7 +603,23 @@ impl Scene {
             light_info.push((point, lstruct));
         }
         shader.uniformMat4f("camera", cm.to_homogeneous().into());
-        /*shader.uniform1ui("n_lights", light_info.len() as u32);
+        let mut queue = vec![(self.root.clone(), Similarity3::<f32>::identity())];
+        while let Some(mut node) = queue.pop() {
+            node.1 = node.1 * node.0.borrow().transform;
+            if let Some(mesh) = &node.0.borrow().mesh {
+                let trans_matrix = node.1.to_homogeneous().into();
+                shader.uniformMat4f("world", trans_matrix);
+                mesh.draw(shader);
+            }
+            for child in &node.0.borrow().children {
+                queue.push((child.clone(), node.1));
+            }
+        }
+        let shader = &mut self.pbr_shader;
+        shader.activate();
+        self.passes.bind_pbr(shader);
+        shader.uniform3f("camera_pos", [cp[0], cp[1], cp[2]]);
+        shader.uniform1ui("n_lights", light_info.len() as u32);
         for i in 0..light_info.len() {
             if i >= MAX_LIGHTS {
                 error!("Too many lights: {}", light_info.len());
@@ -584,19 +636,7 @@ impl Scene {
             shader.uniform4f(&format!("light[{}].position", i), pos);
             shader.uniform3f(&format!("light[{}].color", i), light.1.color);
             shader.uniform1f(&format!("light[{}].intensity", i), light.1.intensity);
-        }*/
-        let mut queue = vec![(self.root.clone(), Similarity3::<f32>::identity())];
-        while let Some(mut node) = queue.pop() {
-            node.1 = node.1 * node.0.borrow().transform;
-            if let Some(mesh) = &node.0.borrow().mesh {
-                let trans_matrix = node.1.to_homogeneous().into();
-                shader.uniformMat4f("world", trans_matrix);
-                mesh.draw(shader);
-            }
-            for child in &node.0.borrow().children {
-                queue.push((child.clone(), node.1));
-            }
         }
-        self.passes.print_buffer("position");
+        self.passes.print_quad();
     }
 }

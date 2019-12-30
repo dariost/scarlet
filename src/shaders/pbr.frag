@@ -10,23 +10,13 @@ struct Light {
     float intensity;
 };
 
-struct Material {
-    vec4 albedo;
-    float metalness;
-    float roughness;
-};
-
 uniform Light light[MAX_LIGHTS];
-uniform Material material;
 uniform uint n_lights;
-uniform mat4 camera;
 uniform vec3 camera_pos;
-uniform mat4 world;
 
 out vec4 color_output;
 
-in vec3 pos;
-in vec3 norm;
+in vec2 tex_coord;
 
 const float PI = acos(-1.0);
 
@@ -71,14 +61,36 @@ vec3 fresnelSchlick(float cosTheta, vec3 F0)
     return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
 }
 
+/*struct Material {
+    vec4 albedo;
+    float metalness;
+    float roughness;
+};
+
+in vec3 pos;
+in vec3 norm;
+uniform Material material;*/
+
+uniform sampler2D position_sampler;
+uniform sampler2D normal_sampler;
+uniform sampler2D albedo_sampler;
+uniform sampler2D metalness_sampler;
+uniform sampler2D roughness_sampler;
+
 void main()
 {
+    vec3 pos = texture(position_sampler, tex_coord).rgb;
+    vec3 norm = texture(normal_sampler, tex_coord).rgb;
+    vec3 albedo = texture(albedo_sampler, tex_coord).rgb;
+    float metalness = texture(metalness_sampler, tex_coord).r;
+    float roughness = texture(roughness_sampler, tex_coord).r;
+    if(norm == vec3(0.0)) discard;
+
     vec3 N = normalize(norm);
     vec3 V = normalize(camera_pos - pos);
-    vec3 albedo = vec3(material.albedo);
 
     vec3 F0 = vec3(0.04);
-    F0 = mix(F0, albedo, material.metalness);
+    F0 = mix(F0, albedo, metalness);
 
     // reflectance equation
     vec3 Lo = vec3(0.0);
@@ -92,13 +104,13 @@ void main()
         vec3 radiance     = light[i].color * attenuation;
 
         // cook-torrance brdf
-        float NDF = DistributionGGX(N, H, material.roughness);
-        float G   = GeometrySmith(N, V, L, material.roughness);
+        float NDF = DistributionGGX(N, H, roughness);
+        float G   = GeometrySmith(N, V, L, roughness);
         vec3 F    = fresnelSchlick(max(dot(H, V), 0.0), F0);
 
         vec3 kS = F;
         vec3 kD = vec3(1.0) - kS;
-        kD *= 1.0 - material.metalness;
+        kD *= 1.0 - metalness;
 
         vec3 numerator    = NDF * G * F;
         float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0);

@@ -9,9 +9,7 @@ extern crate pretty_env_logger;
 use glad_gles2::gl;
 use glutin::event::{Event, StartCause, WindowEvent};
 use na::geometry::UnitQuaternion;
-use scarlet::{
-    import_scene, Application, ApplicationAction, ApplicationOptions, Shader, ShaderType,
-};
+use scarlet::{import_scene, Application, ApplicationAction, ApplicationOptions};
 
 fn main() {
     pretty_env_logger::init();
@@ -22,14 +20,9 @@ fn main() {
     let (width, height) = app.size();
     let suzanne = import_scene(include_bytes!("suzanne.glb"), width, height);
     let sm = suzanne.get_node("Suzanne").expect("No monkey!");
-    let mut shader = Shader::new();
-    shader.attach(include_str!("shader.vert"), ShaderType::Vertex);
-    shader.attach(include_str!("shader.frag"), ShaderType::Fragment);
-    shader.compile();
-    app.run((suzanne, shader, sm), move |up, ev| {
+    app.run((suzanne, sm), move |up, ev| {
         let suzanne = &mut up.0;
-        let shader = &mut up.1;
-        let sm = &mut up.2;
+        let sm = &mut up.1;
         //trace!("{:?}", ev);
         match ev {
             Event::WindowEvent {
