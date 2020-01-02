@@ -6,10 +6,12 @@ use gltf::khr_lights_punctual::Kind;
 use na::geometry::{Perspective3, Point3, Quaternion, Similarity3, Translation3, UnitQuaternion};
 use nalgebra as na;
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::mem::size_of;
 use std::os::raw::c_void;
 use std::ptr::null;
 use std::rc::{Rc, Weak};
+use std::time::Instant;
 
 #[derive(Debug)]
 struct RenderPasses {
@@ -50,6 +52,9 @@ pub struct Scene {
     ssr_blur_horiz_shader: Shader,
     ssr_blur_vert_shader: Shader,
     ssr_apply_shader: Shader,
+    fps: VecDeque<f64>,
+    fps_total: f64,
+    last_frame_time: Instant,
 }
 
 #[derive(Debug)]
@@ -743,6 +748,9 @@ pub fn import_scene(asset: &[u8], width: u32, height: u32) -> Scene {
         ssr_blur_horiz_shader: ssrbh,
         ssr_blur_vert_shader: ssrbv,
         ssr_apply_shader: ssra,
+        fps: VecDeque::new(),
+        fps_total: 0.0,
+        last_frame_time: Instant::now(),
     }
 }
 
@@ -852,5 +860,21 @@ impl Scene {
         self.passes.print_quad();
         // FINAL PASS
         self.passes.print_buffer("ssr-final");
+        let now = Instant::now();
+        let elapsed = now.duration_since(self.last_frame_time).as_secs_f64();
+        self.fps_total += elapsed;
+        self.fps.push_back(elapsed);
+        self.last_frame_time = now;
+        if self.fps.len() > 127 {
+            self.fps_total -= self.fps.pop_front().expect("cannot fail");
+        }
+    }
+
+    pub fn get_fps(&self) -> f64 {
+        return if self.fps_total == 0.0 {
+            0.0
+        } else {
+            self.fps.len() as f64 / self.fps_total
+        };
     }
 }
