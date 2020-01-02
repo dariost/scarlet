@@ -97,9 +97,15 @@ void main()
     for(uint i = uint(0); i < n_lights; i++)
     {
         // calculate per-light radiance
-        vec3 L = normalize(vec3(light[i].position) - pos);
+        vec3 L;
+        if(light[i].position.w != 0.0)
+            L = normalize(vec3(light[i].position) - pos);
+        else
+            L = vec3(light[i].position);
         vec3 H = normalize(V + L);
         float distance    = length(vec3(light[i].position) - pos);
+        if(light[i].position.w == 0.0)
+            distance = 1.0;
         float attenuation = light[i].intensity / (distance * distance);
         vec3 radiance     = light[i].color * attenuation;
 

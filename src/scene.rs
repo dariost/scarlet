@@ -615,6 +615,7 @@ impl Scene {
                 queue.push((child.clone(), node.1));
             }
         }
+        //self.passes.print_buffer("depth");
         let shader = &mut self.pbr_shader;
         shader.activate();
         self.passes.bind_pbr(shader);
