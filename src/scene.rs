@@ -20,6 +20,16 @@ struct RenderPasses {
     g_metalness: gl::GLuint,
     g_roughness: gl::GLuint,
     g_depth: gl::GLuint,
+    g_pbr: gl::GLuint,
+    g_pbrfb: gl::GLuint,
+    g_ssr: gl::GLuint,
+    g_ssrfb: gl::GLuint,
+    g_ssrbh: gl::GLuint,
+    g_ssrbhfb: gl::GLuint,
+    g_ssrbv: gl::GLuint,
+    g_ssrbvfb: gl::GLuint,
+    g_ssra: gl::GLuint,
+    g_ssrafb: gl::GLuint,
     q_vao: gl::GLuint,
     q_vbo: gl::GLuint,
     r_rgb: Shader,
@@ -36,6 +46,10 @@ pub struct Scene {
     passes: RenderPasses,
     prepare_shader: Shader,
     pbr_shader: Shader,
+    ssr_shader: Shader,
+    ssr_blur_horiz_shader: Shader,
+    ssr_blur_vert_shader: Shader,
+    ssr_apply_shader: Shader,
 }
 
 #[derive(Debug)]
@@ -94,10 +108,25 @@ impl RenderPasses {
         let mut g_metalness: gl::GLuint = 0;
         let mut g_roughness: gl::GLuint = 0;
         let mut g_depth: gl::GLuint = 0;
+        let mut g_pbr: gl::GLuint = 0;
+        let mut g_pbrfb: gl::GLuint = 0;
+        let mut g_ssr: gl::GLuint = 0;
+        let mut g_ssrfb: gl::GLuint = 0;
+        let mut g_ssrbh: gl::GLuint = 0;
+        let mut g_ssrbhfb: gl::GLuint = 0;
+        let mut g_ssrbv: gl::GLuint = 0;
+        let mut g_ssrbvfb: gl::GLuint = 0;
+        let mut g_ssra: gl::GLuint = 0;
+        let mut g_ssrafb: gl::GLuint = 0;
         let mut q_vao: gl::GLuint = 0;
         let mut q_vbo: gl::GLuint = 0;
         unsafe {
             gl::GenFramebuffers(1, &mut g_buffer);
+            gl::GenFramebuffers(1, &mut g_pbrfb);
+            gl::GenFramebuffers(1, &mut g_ssrfb);
+            gl::GenFramebuffers(1, &mut g_ssrbhfb);
+            gl::GenFramebuffers(1, &mut g_ssrbvfb);
+            gl::GenFramebuffers(1, &mut g_ssrafb);
             gl::BindFramebuffer(gl::GL_FRAMEBUFFER, g_buffer);
             let bind = |buf, internal_format, format, kind, attachment| {
                 gl::GenTextures(1, buf);
@@ -191,6 +220,56 @@ impl RenderPasses {
                 gl::GL_COLOR_ATTACHMENT4,
             ];
             gl::DrawBuffers(5, draw_buffers.as_ptr());
+            gl::BindFramebuffer(gl::GL_FRAMEBUFFER, g_pbrfb);
+            bind(
+                &mut g_pbr,
+                gl::GL_RGB,
+                gl::GL_RGB,
+                gl::GL_UNSIGNED_BYTE,
+                gl::GL_COLOR_ATTACHMENT0,
+            );
+            let draw_buffers = [gl::GL_COLOR_ATTACHMENT0];
+            gl::DrawBuffers(1, draw_buffers.as_ptr());
+            gl::BindFramebuffer(gl::GL_FRAMEBUFFER, g_ssrfb);
+            bind(
+                &mut g_ssr,
+                gl::GL_RGB,
+                gl::GL_RGB,
+                gl::GL_UNSIGNED_BYTE,
+                gl::GL_COLOR_ATTACHMENT0,
+            );
+            let draw_buffers = [gl::GL_COLOR_ATTACHMENT0];
+            gl::DrawBuffers(1, draw_buffers.as_ptr());
+            gl::BindFramebuffer(gl::GL_FRAMEBUFFER, g_ssrbhfb);
+            bind(
+                &mut g_ssrbh,
+                gl::GL_RGB,
+                gl::GL_RGB,
+                gl::GL_UNSIGNED_BYTE,
+                gl::GL_COLOR_ATTACHMENT0,
+            );
+            let draw_buffers = [gl::GL_COLOR_ATTACHMENT0];
+            gl::DrawBuffers(1, draw_buffers.as_ptr());
+            gl::BindFramebuffer(gl::GL_FRAMEBUFFER, g_ssrbvfb);
+            bind(
+                &mut g_ssrbv,
+                gl::GL_RGB,
+                gl::GL_RGB,
+                gl::GL_UNSIGNED_BYTE,
+                gl::GL_COLOR_ATTACHMENT0,
+            );
+            let draw_buffers = [gl::GL_COLOR_ATTACHMENT0];
+            gl::DrawBuffers(1, draw_buffers.as_ptr());
+            gl::BindFramebuffer(gl::GL_FRAMEBUFFER, g_ssrafb);
+            bind(
+                &mut g_ssra,
+                gl::GL_RGB,
+                gl::GL_RGB,
+                gl::GL_UNSIGNED_BYTE,
+                gl::GL_COLOR_ATTACHMENT0,
+            );
+            let draw_buffers = [gl::GL_COLOR_ATTACHMENT0];
+            gl::DrawBuffers(1, draw_buffers.as_ptr());
             gl::BindFramebuffer(gl::GL_FRAMEBUFFER, 0);
         }
         #[rustfmt::skip]
@@ -252,6 +331,16 @@ impl RenderPasses {
             q_vbo,
             r_rgb,
             r_r,
+            g_pbr,
+            g_pbrfb,
+            g_ssr,
+            g_ssrfb,
+            g_ssrbh,
+            g_ssrbhfb,
+            g_ssrbv,
+            g_ssrbvfb,
+            g_ssra,
+            g_ssrafb,
         }
     }
     pub fn bind(&self) {
@@ -263,7 +352,7 @@ impl RenderPasses {
 
     pub fn bind_pbr(&self, shader: &mut Shader) {
         unsafe {
-            gl::BindFramebuffer(gl::GL_FRAMEBUFFER, 0);
+            gl::BindFramebuffer(gl::GL_FRAMEBUFFER, self.g_pbrfb);
             gl::Clear(gl::GL_COLOR_BUFFER_BIT | gl::GL_DEPTH_BUFFER_BIT);
             shader.uniform1i("position_sampler", 0);
             shader.uniform1i("normal_sampler", 1);
@@ -279,6 +368,79 @@ impl RenderPasses {
             gl::ActiveTexture(gl::GL_TEXTURE3);
             gl::BindTexture(gl::GL_TEXTURE_2D, self.g_metalness);
             gl::ActiveTexture(gl::GL_TEXTURE4);
+            gl::BindTexture(gl::GL_TEXTURE_2D, self.g_roughness);
+            gl::ActiveTexture(gl::GL_TEXTURE0);
+        }
+    }
+
+    pub fn bind_ssr(&self, shader: &mut Shader) {
+        unsafe {
+            gl::BindFramebuffer(gl::GL_FRAMEBUFFER, self.g_ssrfb);
+            gl::Clear(gl::GL_COLOR_BUFFER_BIT | gl::GL_DEPTH_BUFFER_BIT);
+            shader.uniform1i("position_sampler", 0);
+            shader.uniform1i("normal_sampler", 1);
+            shader.uniform1i("pbr_sampler", 2);
+            shader.uniform1i("metalness_sampler", 3);
+            shader.uniform1i("roughness_sampler", 4);
+            shader.uniform1i("depth_sampler", 5);
+            gl::ActiveTexture(gl::GL_TEXTURE0);
+            gl::BindTexture(gl::GL_TEXTURE_2D, self.g_position);
+            gl::ActiveTexture(gl::GL_TEXTURE1);
+            gl::BindTexture(gl::GL_TEXTURE_2D, self.g_normal);
+            gl::ActiveTexture(gl::GL_TEXTURE2);
+            gl::BindTexture(gl::GL_TEXTURE_2D, self.g_pbr);
+            gl::ActiveTexture(gl::GL_TEXTURE3);
+            gl::BindTexture(gl::GL_TEXTURE_2D, self.g_metalness);
+            gl::ActiveTexture(gl::GL_TEXTURE4);
+            gl::BindTexture(gl::GL_TEXTURE_2D, self.g_roughness);
+            gl::ActiveTexture(gl::GL_TEXTURE5);
+            gl::BindTexture(gl::GL_TEXTURE_2D, self.g_depth);
+            gl::ActiveTexture(gl::GL_TEXTURE0);
+        }
+    }
+
+    pub fn bind_ssr_apply(&self, shader: &mut Shader) {
+        unsafe {
+            gl::BindFramebuffer(gl::GL_FRAMEBUFFER, self.g_ssrafb);
+            gl::Clear(gl::GL_COLOR_BUFFER_BIT | gl::GL_DEPTH_BUFFER_BIT);
+            shader.uniform1i("ssr_sampler", 0);
+            shader.uniform1i("metalness_sampler", 1);
+            shader.uniform1i("pbr_sampler", 2);
+            gl::ActiveTexture(gl::GL_TEXTURE0);
+            gl::BindTexture(gl::GL_TEXTURE_2D, self.g_ssrbv);
+            gl::ActiveTexture(gl::GL_TEXTURE1);
+            gl::BindTexture(gl::GL_TEXTURE_2D, self.g_metalness);
+            gl::ActiveTexture(gl::GL_TEXTURE2);
+            gl::BindTexture(gl::GL_TEXTURE_2D, self.g_pbr);
+            gl::ActiveTexture(gl::GL_TEXTURE0);
+        }
+    }
+
+    pub fn bind_ssr_blur_horiz(&self, shader: &mut Shader, resolution: [f32; 2]) {
+        unsafe {
+            gl::BindFramebuffer(gl::GL_FRAMEBUFFER, self.g_ssrbhfb);
+            gl::Clear(gl::GL_COLOR_BUFFER_BIT | gl::GL_DEPTH_BUFFER_BIT);
+            shader.uniform1i("ssr_sampler", 0);
+            shader.uniform1i("roughness_sampler", 1);
+            shader.uniform2f("resolution", resolution);
+            gl::ActiveTexture(gl::GL_TEXTURE0);
+            gl::BindTexture(gl::GL_TEXTURE_2D, self.g_ssr);
+            gl::ActiveTexture(gl::GL_TEXTURE1);
+            gl::BindTexture(gl::GL_TEXTURE_2D, self.g_roughness);
+            gl::ActiveTexture(gl::GL_TEXTURE0);
+        }
+    }
+
+    pub fn bind_ssr_blur_vert(&self, shader: &mut Shader, resolution: [f32; 2]) {
+        unsafe {
+            gl::BindFramebuffer(gl::GL_FRAMEBUFFER, self.g_ssrbvfb);
+            gl::Clear(gl::GL_COLOR_BUFFER_BIT | gl::GL_DEPTH_BUFFER_BIT);
+            shader.uniform1i("ssr_sampler", 0);
+            shader.uniform1i("roughness_sampler", 1);
+            shader.uniform2f("resolution", resolution);
+            gl::ActiveTexture(gl::GL_TEXTURE0);
+            gl::BindTexture(gl::GL_TEXTURE_2D, self.g_ssrbh);
+            gl::ActiveTexture(gl::GL_TEXTURE1);
             gl::BindTexture(gl::GL_TEXTURE_2D, self.g_roughness);
             gl::ActiveTexture(gl::GL_TEXTURE0);
         }
@@ -304,6 +466,11 @@ impl RenderPasses {
             "metalness" => (&self.g_metalness, &self.r_r),
             "roughness" => (&self.g_roughness, &self.r_r),
             "depth" => (&self.g_depth, &self.r_r),
+            "pbr" => (&self.g_pbr, &self.r_rgb),
+            "ssr" => (&self.g_ssr, &self.r_rgb),
+            "ssr-blur-horiz" => (&self.g_ssrbh, &self.r_rgb),
+            "ssr-blur-vert" => (&self.g_ssrbv, &self.r_rgb),
+            "ssr-final" => (&self.g_ssra, &self.r_rgb),
             _ => panic!("Non existent render buffer"),
         };
         info.1.activate();
@@ -547,6 +714,22 @@ pub fn import_scene(asset: &[u8], width: u32, height: u32) -> Scene {
     pbr.attach(include_str!("shaders/pbr.vert"), ShaderType::Vertex);
     pbr.attach(include_str!("shaders/pbr.frag"), ShaderType::Fragment);
     pbr.compile();
+    let mut ssr = Shader::new();
+    ssr.attach(include_str!("shaders/ssr.vert"), ShaderType::Vertex);
+    ssr.attach(include_str!("shaders/ssr.frag"), ShaderType::Fragment);
+    ssr.compile();
+    let mut ssrbh = Shader::new();
+    ssrbh.attach(include_str!("shaders/ssrb.vert"), ShaderType::Vertex);
+    ssrbh.attach(include_str!("shaders/ssrbh.frag"), ShaderType::Fragment);
+    ssrbh.compile();
+    let mut ssrbv = Shader::new();
+    ssrbv.attach(include_str!("shaders/ssrb.vert"), ShaderType::Vertex);
+    ssrbv.attach(include_str!("shaders/ssrbv.frag"), ShaderType::Fragment);
+    ssrbv.compile();
+    let mut ssra = Shader::new();
+    ssra.attach(include_str!("shaders/ssra.vert"), ShaderType::Vertex);
+    ssra.attach(include_str!("shaders/ssra.frag"), ShaderType::Fragment);
+    ssra.compile();
     Scene {
         root: root_node,
         lights: lights,
@@ -556,6 +739,10 @@ pub fn import_scene(asset: &[u8], width: u32, height: u32) -> Scene {
         passes: RenderPasses::new(width as gl::GLsizei, height as gl::GLsizei),
         prepare_shader: shdr,
         pbr_shader: pbr,
+        ssr_shader: ssr,
+        ssr_blur_horiz_shader: ssrbh,
+        ssr_blur_vert_shader: ssrbv,
+        ssr_apply_shader: ssra,
     }
 }
 
@@ -615,7 +802,7 @@ impl Scene {
                 queue.push((child.clone(), node.1));
             }
         }
-        //self.passes.print_buffer("depth");
+        // PBR PASS
         let shader = &mut self.pbr_shader;
         shader.activate();
         self.passes.bind_pbr(shader);
@@ -639,5 +826,31 @@ impl Scene {
             shader.uniform1f(&format!("light[{}].intensity", i), light.1.intensity);
         }
         self.passes.print_quad();
+        // SSR PASS
+        let shader = &mut self.ssr_shader;
+        shader.activate();
+        self.passes.bind_ssr(shader);
+        shader.uniform3f("camera_pos", [cp[0], cp[1], cp[2]]);
+        shader.uniformMat4f("camera", cm.to_homogeneous().into());
+        self.passes.print_quad();
+        // SSR-BLUR-HORIZ PASS
+        let shader = &mut self.ssr_blur_horiz_shader;
+        shader.activate();
+        self.passes
+            .bind_ssr_blur_horiz(shader, [self.width as f32, self.height as f32]);
+        self.passes.print_quad();
+        // SSR-BLUR-VERT PASS
+        let shader = &mut self.ssr_blur_vert_shader;
+        shader.activate();
+        self.passes
+            .bind_ssr_blur_vert(shader, [self.width as f32, self.height as f32]);
+        self.passes.print_quad();
+        // SSR-APPLY
+        let shader = &mut self.ssr_apply_shader;
+        shader.activate();
+        self.passes.bind_ssr_apply(shader);
+        self.passes.print_quad();
+        // FINAL PASS
+        self.passes.print_buffer("ssr-final");
     }
 }
