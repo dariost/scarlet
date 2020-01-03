@@ -5,9 +5,9 @@ precision mediump float;
 in vec2 tex;
 uniform sampler2D texture_sampler;
 
-out vec3 color;
+out vec4 color;
 
 void main() {
     float c = texture(texture_sampler, tex).r;
-    color = vec3(c, c, c);
+    color = vec4(vec3(c), 1.0);
 }
