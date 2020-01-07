@@ -475,7 +475,7 @@ impl RenderPasses {
             "ssr" => (&self.g_ssr, &self.r_rgb),
             "ssr-blur-horiz" => (&self.g_ssrbh, &self.r_rgb),
             "ssr-blur-vert" => (&self.g_ssrbv, &self.r_rgb),
-            "ssr-final" => (&self.g_ssra, &self.r_rgb),
+            "ssr-final" | "final" => (&self.g_ssra, &self.r_rgb),
             _ => panic!("Non existent render buffer"),
         };
         info.1.activate();
@@ -768,7 +768,7 @@ impl Scene {
         None
     }
 
-    pub fn draw(&mut self) {
+    pub fn draw(&mut self, frame: &str) {
         const MAX_LIGHTS: usize = 16;
         let shader = &mut self.prepare_shader;
         self.passes.bind();
@@ -859,7 +859,7 @@ impl Scene {
         self.passes.bind_ssr_apply(shader);
         self.passes.print_quad();
         // FINAL PASS
-        self.passes.print_buffer("ssr-final");
+        self.passes.print_buffer(frame);
         let now = Instant::now();
         let elapsed = now.duration_since(self.last_frame_time).as_secs_f64();
         self.fps_total += elapsed;

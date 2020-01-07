@@ -37,7 +37,7 @@ fn main() {
                 sm.borrow_mut()
                     .transform
                     .append_rotation_mut(&UnitQuaternion::<f32>::from_euler_angles(0.0, 0.01, 0.0));
-                suzanne.draw();
+                suzanne.draw("final");
                 gl::Flush();
                 ApplicationAction::Refresh
             },
