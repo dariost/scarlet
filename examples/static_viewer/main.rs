@@ -31,7 +31,7 @@ fn main() {
         move |(model, last_time, frame_index), ev| {
             //trace!("{:?}", ev);
             let frames = [
-                "ssr-final",
+                "final",
                 "position",
                 "normal",
                 "albedo",
@@ -40,8 +40,6 @@ fn main() {
                 "depth",
                 "pbr",
                 "ssr",
-                "ssr-blur-horiz",
-                "ssr-blur-vert",
             ];
             match ev {
                 Event::WindowEvent {

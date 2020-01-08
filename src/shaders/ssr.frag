@@ -27,7 +27,8 @@ float rand(vec2 co) {
     return fract(sin(sn) * c);
 }
 
-vec3 ray_march(vec3 pos, vec3 dir, float step_size) {
+vec3 ray_march(vec3 pos, vec3 dir, float step_size, float rough_factor) {
+    float steps = 0.0;
     while(true) {
         pos += dir * step_size;
         vec4 ray_view_homo = camera * vec4(pos, 1.0);
@@ -38,8 +39,9 @@ vec3 ray_march(vec3 pos, vec3 dir, float step_size) {
         vec2 coord = vec2(view.x + 1.0, view.y + 1.0) / 2.0;
         float depth = texture(depth_sampler, coord).r;
         if(view.z >= depth) {
-            return texture(pbr_sampler, coord).rgb;
+            return textureLod(pbr_sampler, coord, min(log2(steps * rough_factor + 1.0), 6.0)).rgb;
         }
+        steps += 1.0;
     }
     return vec3(0.0, 0.0, 0.0);
 }
@@ -53,10 +55,10 @@ void main() {
     float depth = texture(depth_sampler, tex_coord).r;
     vec3 ray_pos = position;
     vec3 ray_dir = reflect(position - camera_pos, normal);
-    float ray_step = 0.001 + roughness * 0.05;
+    float ray_step = 0.01;
     vec3 out_color = vec3(0.0, 0.0, 0.0);
     for(int i = 0; i < N_RAYS; i++) {
-        out_color += ray_march(ray_pos, ray_dir, ray_step + (ray_step * rand(float(i + 1) * tex_pos.xy)));
+        out_color += ray_march(ray_pos, ray_dir, ray_step/* + (ray_step * rand(float(i + 1) * tex_pos.xy))*/, roughness);
     }
     out_color /= float(N_RAYS);
     color_output = vec4(out_color, 1.0);

@@ -26,10 +26,6 @@ struct RenderPasses {
     g_pbrfb: gl::GLuint,
     g_ssr: gl::GLuint,
     g_ssrfb: gl::GLuint,
-    g_ssrbh: gl::GLuint,
-    g_ssrbhfb: gl::GLuint,
-    g_ssrbv: gl::GLuint,
-    g_ssrbvfb: gl::GLuint,
     g_ssra: gl::GLuint,
     g_ssrafb: gl::GLuint,
     q_vao: gl::GLuint,
@@ -49,8 +45,6 @@ pub struct Scene {
     prepare_shader: Shader,
     pbr_shader: Shader,
     ssr_shader: Shader,
-    ssr_blur_horiz_shader: Shader,
-    ssr_blur_vert_shader: Shader,
     ssr_apply_shader: Shader,
     fps: VecDeque<f64>,
     fps_total: f64,
@@ -117,10 +111,6 @@ impl RenderPasses {
         let mut g_pbrfb: gl::GLuint = 0;
         let mut g_ssr: gl::GLuint = 0;
         let mut g_ssrfb: gl::GLuint = 0;
-        let mut g_ssrbh: gl::GLuint = 0;
-        let mut g_ssrbhfb: gl::GLuint = 0;
-        let mut g_ssrbv: gl::GLuint = 0;
-        let mut g_ssrbvfb: gl::GLuint = 0;
         let mut g_ssra: gl::GLuint = 0;
         let mut g_ssrafb: gl::GLuint = 0;
         let mut q_vao: gl::GLuint = 0;
@@ -129,8 +119,6 @@ impl RenderPasses {
             gl::GenFramebuffers(1, &mut g_buffer);
             gl::GenFramebuffers(1, &mut g_pbrfb);
             gl::GenFramebuffers(1, &mut g_ssrfb);
-            gl::GenFramebuffers(1, &mut g_ssrbhfb);
-            gl::GenFramebuffers(1, &mut g_ssrbvfb);
             gl::GenFramebuffers(1, &mut g_ssrafb);
             gl::BindFramebuffer(gl::GL_FRAMEBUFFER, g_buffer);
             let bind = |buf, internal_format, format, kind, attachment| {
@@ -245,26 +233,6 @@ impl RenderPasses {
             );
             let draw_buffers = [gl::GL_COLOR_ATTACHMENT0];
             gl::DrawBuffers(1, draw_buffers.as_ptr());
-            gl::BindFramebuffer(gl::GL_FRAMEBUFFER, g_ssrbhfb);
-            bind(
-                &mut g_ssrbh,
-                gl::GL_RGB,
-                gl::GL_RGB,
-                gl::GL_UNSIGNED_BYTE,
-                gl::GL_COLOR_ATTACHMENT0,
-            );
-            let draw_buffers = [gl::GL_COLOR_ATTACHMENT0];
-            gl::DrawBuffers(1, draw_buffers.as_ptr());
-            gl::BindFramebuffer(gl::GL_FRAMEBUFFER, g_ssrbvfb);
-            bind(
-                &mut g_ssrbv,
-                gl::GL_RGB,
-                gl::GL_RGB,
-                gl::GL_UNSIGNED_BYTE,
-                gl::GL_COLOR_ATTACHMENT0,
-            );
-            let draw_buffers = [gl::GL_COLOR_ATTACHMENT0];
-            gl::DrawBuffers(1, draw_buffers.as_ptr());
             gl::BindFramebuffer(gl::GL_FRAMEBUFFER, g_ssrafb);
             bind(
                 &mut g_ssra,
@@ -340,10 +308,6 @@ impl RenderPasses {
             g_pbrfb,
             g_ssr,
             g_ssrfb,
-            g_ssrbh,
-            g_ssrbhfb,
-            g_ssrbv,
-            g_ssrbvfb,
             g_ssra,
             g_ssrafb,
         }
@@ -357,6 +321,18 @@ impl RenderPasses {
 
     pub fn bind_pbr(&self, shader: &mut Shader) {
         unsafe {
+            gl::BindTexture(gl::GL_TEXTURE_2D, self.g_pbr);
+            gl::TexParameteri(
+                gl::GL_TEXTURE_2D,
+                gl::GL_TEXTURE_MIN_FILTER,
+                gl::GL_NEAREST as gl::GLint,
+            );
+            gl::TexParameteri(
+                gl::GL_TEXTURE_2D,
+                gl::GL_TEXTURE_MAG_FILTER,
+                gl::GL_NEAREST as gl::GLint,
+            );
+            gl::BindTexture(gl::GL_TEXTURE_2D, 0);
             gl::BindFramebuffer(gl::GL_FRAMEBUFFER, self.g_pbrfb);
             gl::Clear(gl::GL_COLOR_BUFFER_BIT | gl::GL_DEPTH_BUFFER_BIT);
             shader.uniform1i("position_sampler", 0);
@@ -394,6 +370,17 @@ impl RenderPasses {
             gl::BindTexture(gl::GL_TEXTURE_2D, self.g_normal);
             gl::ActiveTexture(gl::GL_TEXTURE2);
             gl::BindTexture(gl::GL_TEXTURE_2D, self.g_pbr);
+            gl::GenerateMipmap(gl::GL_TEXTURE_2D);
+            gl::TexParameteri(
+                gl::GL_TEXTURE_2D,
+                gl::GL_TEXTURE_MIN_FILTER,
+                gl::GL_LINEAR_MIPMAP_LINEAR as gl::GLint,
+            );
+            gl::TexParameteri(
+                gl::GL_TEXTURE_2D,
+                gl::GL_TEXTURE_MAG_FILTER,
+                gl::GL_LINEAR_MIPMAP_LINEAR as gl::GLint,
+            );
             gl::ActiveTexture(gl::GL_TEXTURE3);
             gl::BindTexture(gl::GL_TEXTURE_2D, self.g_metalness);
             gl::ActiveTexture(gl::GL_TEXTURE4);
@@ -412,41 +399,12 @@ impl RenderPasses {
             shader.uniform1i("metalness_sampler", 1);
             shader.uniform1i("pbr_sampler", 2);
             gl::ActiveTexture(gl::GL_TEXTURE0);
-            gl::BindTexture(gl::GL_TEXTURE_2D, self.g_ssrbv);
+            gl::BindTexture(gl::GL_TEXTURE_2D, self.g_ssr);
             gl::ActiveTexture(gl::GL_TEXTURE1);
             gl::BindTexture(gl::GL_TEXTURE_2D, self.g_metalness);
             gl::ActiveTexture(gl::GL_TEXTURE2);
             gl::BindTexture(gl::GL_TEXTURE_2D, self.g_pbr);
             gl::ActiveTexture(gl::GL_TEXTURE0);
-        }
-    }
-
-    pub fn bind_ssr_blur_horiz(&self, shader: &mut Shader, resolution: [f32; 2]) {
-        unsafe {
-            gl::BindFramebuffer(gl::GL_FRAMEBUFFER, self.g_ssrbhfb);
-            gl::Clear(gl::GL_COLOR_BUFFER_BIT | gl::GL_DEPTH_BUFFER_BIT);
-            shader.uniform1i("ssr_sampler", 0);
-            shader.uniform1i("roughness_sampler", 1);
-            shader.uniform2f("resolution", resolution);
-            gl::ActiveTexture(gl::GL_TEXTURE0);
-            gl::BindTexture(gl::GL_TEXTURE_2D, self.g_ssr);
-            gl::ActiveTexture(gl::GL_TEXTURE1);
-            gl::BindTexture(gl::GL_TEXTURE_2D, self.g_roughness);
-            gl::ActiveTexture(gl::GL_TEXTURE0);
-        }
-    }
-
-    pub fn bind_ssr_blur_vert(&self, shader: &mut Shader, resolution: [f32; 2]) {
-        unsafe {
-            gl::BindFramebuffer(gl::GL_FRAMEBUFFER, self.g_ssrbvfb);
-            gl::Clear(gl::GL_COLOR_BUFFER_BIT | gl::GL_DEPTH_BUFFER_BIT);
-            shader.uniform1i("ssr_sampler", 0);
-            shader.uniform1i("roughness_sampler", 1);
-            shader.uniform2f("resolution", resolution);
-            gl::ActiveTexture(gl::GL_TEXTURE0);
-            gl::BindTexture(gl::GL_TEXTURE_2D, self.g_ssrbh);
-            gl::ActiveTexture(gl::GL_TEXTURE1);
-            gl::BindTexture(gl::GL_TEXTURE_2D, self.g_roughness);
             gl::ActiveTexture(gl::GL_TEXTURE0);
         }
     }
@@ -473,8 +431,6 @@ impl RenderPasses {
             "depth" => (&self.g_depth, &self.r_r),
             "pbr" => (&self.g_pbr, &self.r_rgb),
             "ssr" => (&self.g_ssr, &self.r_rgb),
-            "ssr-blur-horiz" => (&self.g_ssrbh, &self.r_rgb),
-            "ssr-blur-vert" => (&self.g_ssrbv, &self.r_rgb),
             "ssr-final" | "final" => (&self.g_ssra, &self.r_rgb),
             _ => panic!("Non existent render buffer"),
         };
@@ -723,14 +679,6 @@ pub fn import_scene(asset: &[u8], width: u32, height: u32) -> Scene {
     ssr.attach(include_str!("shaders/ssr.vert"), ShaderType::Vertex);
     ssr.attach(include_str!("shaders/ssr.frag"), ShaderType::Fragment);
     ssr.compile();
-    let mut ssrbh = Shader::new();
-    ssrbh.attach(include_str!("shaders/ssrb.vert"), ShaderType::Vertex);
-    ssrbh.attach(include_str!("shaders/ssrbh.frag"), ShaderType::Fragment);
-    ssrbh.compile();
-    let mut ssrbv = Shader::new();
-    ssrbv.attach(include_str!("shaders/ssrb.vert"), ShaderType::Vertex);
-    ssrbv.attach(include_str!("shaders/ssrbv.frag"), ShaderType::Fragment);
-    ssrbv.compile();
     let mut ssra = Shader::new();
     ssra.attach(include_str!("shaders/ssra.vert"), ShaderType::Vertex);
     ssra.attach(include_str!("shaders/ssra.frag"), ShaderType::Fragment);
@@ -745,8 +693,6 @@ pub fn import_scene(asset: &[u8], width: u32, height: u32) -> Scene {
         prepare_shader: shdr,
         pbr_shader: pbr,
         ssr_shader: ssr,
-        ssr_blur_horiz_shader: ssrbh,
-        ssr_blur_vert_shader: ssrbv,
         ssr_apply_shader: ssra,
         fps: VecDeque::new(),
         fps_total: 0.0,
@@ -840,18 +786,6 @@ impl Scene {
         self.passes.bind_ssr(shader);
         shader.uniform3f("camera_pos", [cp[0], cp[1], cp[2]]);
         shader.uniformMat4f("camera", cm.to_homogeneous().into());
-        self.passes.print_quad();
-        // SSR-BLUR-HORIZ PASS
-        let shader = &mut self.ssr_blur_horiz_shader;
-        shader.activate();
-        self.passes
-            .bind_ssr_blur_horiz(shader, [self.width as f32, self.height as f32]);
-        self.passes.print_quad();
-        // SSR-BLUR-VERT PASS
-        let shader = &mut self.ssr_blur_vert_shader;
-        shader.activate();
-        self.passes
-            .bind_ssr_blur_vert(shader, [self.width as f32, self.height as f32]);
         self.passes.print_quad();
         // SSR-APPLY
         let shader = &mut self.ssr_apply_shader;
