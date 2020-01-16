@@ -379,7 +379,7 @@ impl RenderPasses {
             gl::TexParameteri(
                 gl::GL_TEXTURE_2D,
                 gl::GL_TEXTURE_MAG_FILTER,
-                gl::GL_LINEAR_MIPMAP_LINEAR as gl::GLint,
+                gl::GL_LINEAR as gl::GLint,
             );
             gl::ActiveTexture(gl::GL_TEXTURE3);
             gl::BindTexture(gl::GL_TEXTURE_2D, self.g_metalness);
