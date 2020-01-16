@@ -8,8 +8,10 @@ extern crate pretty_env_logger;
 
 use glad_gles2::gl;
 use glutin::event::{ElementState, Event, KeyboardInput, StartCause, VirtualKeyCode, WindowEvent};
+use scarlet::scene::Scene;
 use scarlet::{import_scene, Application, ApplicationAction, ApplicationOptions};
 use std::env::args;
+use std::f32;
 use std::fs;
 use std::time::Instant;
 
@@ -30,6 +32,20 @@ fn main() {
         (model, last_time, frame_index),
         move |(model, last_time, frame_index), ev| {
             //trace!("{:?}", ev);
+            let get_roughness = |model: &mut Scene| {
+                let floor = model.get_node("Plane.002").unwrap();
+                let mut floor = floor.borrow_mut();
+                let mesh = floor.mesh.as_mut().unwrap();
+                let material = &mut mesh.data[0].material;
+                material.roughness
+            };
+            let set_roughness = |model: &mut Scene, factor: f32| {
+                let floor = model.get_node("Plane.002").unwrap();
+                let mut floor = floor.borrow_mut();
+                let mesh = floor.mesh.as_mut().unwrap();
+                let mut material = &mut mesh.data[0].material;
+                material.roughness = factor;
+            };
             let frames = [
                 "final",
                 "position",
@@ -87,6 +103,42 @@ fn main() {
                     ..
                 } => {
                     *frame_index = (*frame_index + frames.len() - 1) % frames.len();
+                    ApplicationAction::Nothing
+                }
+                Event::WindowEvent {
+                    event:
+                        WindowEvent::KeyboardInput {
+                            input:
+                                KeyboardInput {
+                                    state: ElementState::Pressed,
+                                    virtual_keycode: Some(VirtualKeyCode::Up),
+                                    ..
+                                },
+                            ..
+                        },
+                    ..
+                } => {
+                    let r = f32::min(1.0, get_roughness(model) + 0.05);
+                    set_roughness(model, r);
+                    info!("Roughness: {}", r);
+                    ApplicationAction::Nothing
+                }
+                Event::WindowEvent {
+                    event:
+                        WindowEvent::KeyboardInput {
+                            input:
+                                KeyboardInput {
+                                    state: ElementState::Pressed,
+                                    virtual_keycode: Some(VirtualKeyCode::Down),
+                                    ..
+                                },
+                            ..
+                        },
+                    ..
+                } => {
+                    let r = f32::max(0.0, get_roughness(model) - 0.05);
+                    set_roughness(model, r);
+                    info!("Roughness: {}", r);
                     ApplicationAction::Nothing
                 }
                 _ => ApplicationAction::Nothing,

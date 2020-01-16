@@ -57,9 +57,9 @@ pub struct RealSceneNode {
     children: Vec<SceneNode>,
     parent: Option<Weak<RefCell<RealSceneNode>>>,
     name: String,
-    camera: Option<Camera>,
-    light: Option<Light>,
-    mesh: Option<Mesh>,
+    pub camera: Option<Camera>,
+    pub light: Option<Light>,
+    pub mesh: Option<Mesh>,
 }
 
 #[derive(Debug)]
@@ -81,7 +81,7 @@ pub struct RenderData {
     vao: gl::GLuint,
     vbo: gl::GLuint,
     mode: gl::GLuint,
-    material: Material,
+    pub material: Material,
     buffer: Vec<f32>,
     n_elements: i32,
 }
@@ -448,7 +448,7 @@ impl RenderPasses {
 #[derive(Debug)]
 pub struct Mesh {
     name: String,
-    data: Vec<RenderData>,
+    pub data: Vec<RenderData>,
 }
 
 impl Mesh {
@@ -461,9 +461,9 @@ impl Mesh {
 
 #[derive(Debug, Default)]
 pub struct Material {
-    color: [f32; 4],
-    metallic: f32,
-    roughness: f32,
+    pub color: [f32; 4],
+    pub metallic: f32,
+    pub roughness: f32,
 }
 
 type SceneNode = Rc<RefCell<RealSceneNode>>;

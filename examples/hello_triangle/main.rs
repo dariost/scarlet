@@ -62,6 +62,9 @@ fn main() {
     shader.attach(include_str!("shader.vert"), ShaderType::Vertex);
     shader.attach(include_str!("shader.frag"), ShaderType::Fragment);
     shader.compile();
+    unsafe {
+        gl::Disable(gl::GL_DEPTH_TEST);
+    }
     app.run((), move |_, ev| {
         trace!("{:?}", ev);
         match ev {
@@ -69,10 +72,7 @@ fn main() {
                 event: WindowEvent::CloseRequested,
                 ..
             } => ApplicationAction::Quit,
-            Event::WindowEvent {
-                event: WindowEvent::RedrawRequested,
-                ..
-            }
+            Event::RedrawRequested { .. }
             | Event::NewEvents(StartCause::ResumeTimeReached { .. }) => unsafe {
                 gl::Clear(gl::GL_COLOR_BUFFER_BIT);
                 shader.activate();

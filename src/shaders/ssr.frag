@@ -67,6 +67,11 @@ vec4 textureBicubicLod(sampler2D sampler, vec2 texCoords, float level) {
     return mix(lower, upper, gap);
 }
 
+float tahh(float x) {
+    float e2z = exp(2.0 * x);
+    return (e2z - 1.0) / (e2z + 1.0);
+}
+
 vec3 ray_march(vec3 pos, vec3 dir, float rough_factor) {
     vec3 original_pos = pos;
     float steps = 0.0;
@@ -121,8 +126,13 @@ vec3 ray_march(vec3 pos, vec3 dir, float rough_factor) {
     vec2 coord = vec2(view.x + 1.0, view.y + 1.0) / 2.0;
     float depth = texture(depth_sampler, coord).r;
     if(view.z >= depth) {
+        float camdist = abs(camera_pos - final);
         float dist = abs(original_pos - final);
-        return textureBicubicLod(pbr_sampler, coord, clamp(/*pow(dist, 1.25)*/0.0, 0.0, 8.0)).rgb;
+        float beta = pow(dist / camdist, 1.0 / log(camdist + 1.0));
+        float alpha = 4.0 * pow(0.5 - rough_factor, 2.0);
+        ivec2 ts = textureSize(pbr_sampler, 0);
+        float ms = log2(float(min(ts.x, ts.y))) - 3.0;
+        return textureBicubicLod(pbr_sampler, coord, (beta * (1.0 - alpha) + rough_factor * alpha) * ms).rgb;
     } else {
         return vec3(0.0, 0.0, 0.0);
     }
