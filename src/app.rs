@@ -10,7 +10,7 @@ use std::ptr::null;
 use std::thread::yield_now;
 use std::time::{Duration, Instant};
 
-#[cfg(target_os = "linux")]
+/*#[cfg(target_os = "linux")]
 fn is_wayland(ev: &EventLoop<()>) -> bool {
     use glutin::platform::unix::EventLoopWindowTargetExtUnix;
     ev.is_wayland()
@@ -19,7 +19,7 @@ fn is_wayland(ev: &EventLoop<()>) -> bool {
 #[cfg(not(target_os = "linux"))]
 fn is_wayland(_: &EventLoop) -> bool {
     false
-}
+}*/
 
 thread_local! {
     pub(crate) static GL: std::cell::Cell<bool> = std::cell::Cell::new(false);
@@ -128,14 +128,11 @@ impl Application {
         let window_builder = window_builder.with_title(&options.title);
         let window_builder = if options.fullscreen {
             window_builder
-                .with_inner_size(LogicalSize::from_physical(
-                    primary_monitor.size(),
-                    primary_monitor.hidpi_factor(),
-                ))
+                .with_inner_size(primary_monitor.size())
                 .with_decorations(false)
                 .with_fullscreen(Some(Fullscreen::Borderless(primary_monitor)))
         } else {
-            window_builder.with_inner_size(LogicalSize::from((options.width, options.height)))
+            window_builder.with_inner_size(LogicalSize::new(options.width, options.height))
         };
         let window_builder = window_builder.with_resizable(false);
         let context_builder = ContextBuilder::new();
@@ -186,13 +183,12 @@ impl Application {
                 error!("GL_MAX_DRAW_BUFFERS or GL_MAX_COLOR_ATTACHMENTS is less than 8, expect breakage");
             }
         }
-        let logic_size = context.window().inner_size();
-        let current_monitor = if is_wayland(&event_loop) {
+        /*let current_monitor = if is_wayland(&event_loop) {
             event_loop.primary_monitor()
         } else {
             context.window().current_monitor()
-        };
-        let physical_size = logic_size.to_physical(current_monitor.hidpi_factor());
+        };*/
+        let physical_size = context.window().inner_size();
         let (width, height) = (physical_size.width as u32, physical_size.height as u32);
         info!("Window size: {}×{}", width, height);
         let interval = if options.fps > 0.0 {

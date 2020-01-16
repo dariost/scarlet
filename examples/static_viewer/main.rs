@@ -46,10 +46,7 @@ fn main() {
                     event: WindowEvent::CloseRequested,
                     ..
                 } => ApplicationAction::Quit,
-                Event::WindowEvent {
-                    event: WindowEvent::RedrawRequested,
-                    ..
-                }
+                Event::RedrawRequested { .. }
                 | Event::NewEvents(StartCause::ResumeTimeReached { .. }) => unsafe {
                     model.draw(frames[*frame_index]);
                     gl::Flush();
