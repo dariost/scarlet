@@ -76,7 +76,7 @@ vec3 ray_march(vec3 pos, vec3 dir, float rough_factor) {
     vec3 original_pos = pos;
     float steps = 0.0;
     const float STEP_FACTOR = 1e-3;
-    float INITIAL_STEP_SIZE = max(abs(camera * vec4(dir * STEP_FACTOR, 0.0)), STEP_FACTOR);
+    float INITIAL_STEP_SIZE = max(length(camera * vec4(dir * STEP_FACTOR, 0.0)), STEP_FACTOR);
     float step_size = INITIAL_STEP_SIZE;
     bool ok = false;
     for(int i = 0; i < MAX_ITERATIONS; i++) {
@@ -142,8 +142,8 @@ vec3 ray_march(vec3 pos, vec3 dir, float rough_factor) {
     vec2 coord = vec2(view.x + 1.0, view.y + 1.0) / 2.0;
     float depth = texture(depth_sampler, coord).r;
     if(view.z >= depth) {
-        float camdist = abs(camera_pos - final);
-        float dist = abs(original_pos - final);
+        float camdist = length(camera_pos - final);
+        float dist = length(original_pos - final);
         float beta = pow(dist / camdist, 1.0 / log(camdist + 1.0));
         float alpha = 4.0 * pow(0.5 - rough_factor, 2.0);
         ivec2 ts = textureSize(pbr_sampler, 0);
