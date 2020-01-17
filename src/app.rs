@@ -6,6 +6,7 @@ use glutin::window::{Fullscreen, WindowBuilder};
 use glutin::{ContextBuilder, GlProfile, GlRequest, PossiblyCurrent, WindowedContext};
 use std::env::var;
 use std::ffi::CStr;
+use std::os::raw::c_char;
 use std::ptr::null;
 use std::thread::yield_now;
 use std::time::{Duration, Instant};
@@ -138,7 +139,7 @@ impl Application {
         let context_builder = ContextBuilder::new();
         let context_builder = context_builder.with_vsync(options.vsync);
         let context_builder = context_builder.with_gl(GlRequest::GlThenGles {
-            opengl_version: (4, 3),
+            opengl_version: (3, 3),
             opengles_version: (3, 0),
         });
         let context_builder = context_builder.with_gl_profile(GlProfile::Core);
@@ -175,12 +176,28 @@ impl Application {
             );
             let mut max_draw_buffers: gl::GLint = 0;
             let mut max_color_attachments: gl::GLint = 0;
+            let mut num_extensions: gl::GLint = 0;
             gl::GetIntegerv(gl::GL_MAX_DRAW_BUFFERS, &mut max_draw_buffers);
             gl::GetIntegerv(gl::GL_MAX_COLOR_ATTACHMENTS, &mut max_color_attachments);
+            gl::GetIntegerv(gl::GL_NUM_EXTENSIONS, &mut num_extensions);
             info!("GL_MAX_DRAW_BUFFERS: {}", max_draw_buffers);
             info!("GL_MAX_COLOR_ATTACHMENTS: {}", max_color_attachments);
             if max_draw_buffers < 8 || max_color_attachments < 8 {
                 error!("GL_MAX_DRAW_BUFFERS or GL_MAX_COLOR_ATTACHMENTS is less than 8, expect breakage");
+            }
+            let mut ok = false;
+            for i in 0..num_extensions {
+                let ext = CStr::from_ptr(
+                    gl::GetStringi(gl::GL_EXTENSIONS, i as gl::GLuint) as *const c_char
+                );
+                if ext.to_str().expect("cannot decode GL_EXTENSIONS") == "GL_ARB_ES3_compatibility"
+                {
+                    ok = true;
+                    break;
+                }
+            }
+            if !ok {
+                error!("GL_ARB_ES3_compatibility not found, expect breakage");
             }
         }
         /*let current_monitor = if is_wayland(&event_loop) {
