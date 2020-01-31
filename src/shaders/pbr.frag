@@ -2,7 +2,7 @@
 
 precision mediump float;
 
-#define MAX_LIGHTS 16
+#define MAX_LIGHTS 24
 
 struct Light {
     vec4 position;

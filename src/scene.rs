@@ -715,7 +715,7 @@ impl Scene {
     }
 
     pub fn draw(&mut self, frame: &str) {
-        const MAX_LIGHTS: usize = 16;
+        const MAX_LIGHTS: usize = 24;
         let shader = &mut self.prepare_shader;
         self.passes.bind();
         shader.activate();
