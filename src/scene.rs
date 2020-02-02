@@ -1,12 +1,13 @@
 use crate::have_gl;
 use crate::shader::{Shader, ShaderType};
 use glad_gles2::gl;
+use gltf::animation::util::ReadOutputs;
 use gltf::buffer::Source;
 use gltf::khr_lights_punctual::Kind;
 use na::geometry::{Perspective3, Point3, Quaternion, Similarity3, Translation3, UnitQuaternion};
 use nalgebra as na;
 use std::cell::RefCell;
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::mem::size_of;
 use std::os::raw::c_void;
 use std::ptr::null;
@@ -49,10 +50,13 @@ pub struct Scene {
     fps: VecDeque<f64>,
     fps_total: f64,
     last_frame_time: Instant,
+    animation: HashMap<usize, BTreeMap<u64, Similarity3<f32>>>,
+    animation_step: BTreeSet<u64>,
 }
 
 #[derive(Debug)]
 pub struct RealSceneNode {
+    pub id: usize,
     pub transform: Similarity3<f32>,
     children: Vec<SceneNode>,
     parent: Option<Weak<RefCell<RealSceneNode>>>,
@@ -471,6 +475,7 @@ type SceneNode = Rc<RefCell<RealSceneNode>>;
 impl Default for RealSceneNode {
     fn default() -> Self {
         RealSceneNode {
+            id: 0,
             transform: Similarity3::<f32>::identity(),
             children: Vec::new(),
             name: String::from("NULL"),
@@ -597,6 +602,7 @@ pub fn import_scene(asset: &[u8], width: u32, height: u32) -> Scene {
         buffers: &Vec<gltf::buffer::Data>,
     ) {
         let mut scene_node = RealSceneNode::default();
+        scene_node.id = node.index();
         scene_node.name = String::from(node.name().unwrap_or("NULL"));
         let (translation, rotation, scaling) = node.transform().decomposed();
         let translation = Translation3::<f32>::new(translation[0], translation[1], translation[2]);
@@ -667,6 +673,69 @@ pub fn import_scene(asset: &[u8], width: u32, height: u32) -> Scene {
             &buffers,
         );
     }
+    let mut animation_map: HashMap<usize, BTreeMap<u64, Similarity3<f32>>> = HashMap::new();
+    let mut animation_time: BTreeSet<u64> = BTreeSet::new();
+    for animation in document.animations() {
+        for channel in animation.channels() {
+            let target_node = channel.target().node().index();
+            let reader = channel.reader(|x| {
+                assert!(match x.source() {
+                    Source::Bin => true,
+                    _ => false,
+                });
+                Some(&buffers[x.index()])
+            });
+            let inputs = reader.read_inputs().expect("No animation input!");
+            let outputs = reader.read_outputs().expect("No animation output!");
+            animation_map.entry(target_node).or_insert(BTreeMap::new());
+            let obj_animation = animation_map.get_mut(&target_node).unwrap();
+            if let ReadOutputs::Scales(iter) = outputs {
+                for anim in inputs.zip(iter) {
+                    let tick = (anim.0 * 1000.0) as u64;
+                    animation_time.insert(tick);
+                    obj_animation
+                        .entry(tick)
+                        .or_insert(Similarity3::<f32>::identity());
+                    if anim.1[0] != anim.1[1] || anim.1[1] != anim.1[2] {
+                        error!("Non uniform scaling!");
+                    }
+                    obj_animation
+                        .get_mut(&tick)
+                        .unwrap()
+                        .append_scaling_mut(anim.1[0]);
+                }
+            } else if let ReadOutputs::Translations(iter) = outputs {
+                for anim in inputs.zip(iter) {
+                    let tick = (anim.0 * 1000.0) as u64;
+                    animation_time.insert(tick);
+                    obj_animation
+                        .entry(tick)
+                        .or_insert(Similarity3::<f32>::identity());
+                    let translation = Translation3::<f32>::new(anim.1[0], anim.1[1], anim.1[2]);
+                    obj_animation
+                        .get_mut(&tick)
+                        .unwrap()
+                        .append_translation_mut(&translation);
+                }
+            } else if let ReadOutputs::Rotations(iter) = outputs {
+                let iter = iter.into_f32();
+                for anim in inputs.zip(iter) {
+                    let tick = (anim.0 * 1000.0) as u64;
+                    animation_time.insert(tick);
+                    obj_animation
+                        .entry(tick)
+                        .or_insert(Similarity3::<f32>::identity());
+                    let rotation =
+                        Quaternion::<f32>::new(anim.1[3], anim.1[0], anim.1[1], anim.1[2]);
+                    let rotation = UnitQuaternion::<f32>::from_quaternion(rotation);
+                    obj_animation
+                        .get_mut(&tick)
+                        .unwrap()
+                        .append_rotation_mut(&rotation);
+                }
+            }
+        }
+    }
     let mut shdr = Shader::new();
     shdr.attach(include_str!("shaders/prepare.vert"), ShaderType::Vertex);
     shdr.attach(include_str!("shaders/prepare.frag"), ShaderType::Fragment);
@@ -697,6 +766,8 @@ pub fn import_scene(asset: &[u8], width: u32, height: u32) -> Scene {
         fps: VecDeque::new(),
         fps_total: 0.0,
         last_frame_time: Instant::now(),
+        animation: animation_map,
+        animation_step: animation_time,
     }
 }
 
