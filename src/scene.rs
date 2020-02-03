@@ -795,7 +795,11 @@ impl Scene {
             let mut animation = Similarity3::<f32>::identity();
             if !realtime {
                 if let Some(animap) = scene.animation.get(&node) {
-                    if let Some(elem) = animap.range(0..=scene.frame_count as u64).rev().nth(0) {
+                    if let Some(elem) = animap
+                        .range(0..=scene.animation_step[scene.frame_count])
+                        .rev()
+                        .nth(0)
+                    {
                         animation *= elem.1;
                     }
                 }
