@@ -64,7 +64,7 @@ fn main() {
                 } => ApplicationAction::Quit,
                 Event::RedrawRequested { .. }
                 | Event::NewEvents(StartCause::ResumeTimeReached { .. }) => unsafe {
-                    model.draw(frames[*frame_index]);
+                    model.draw(frames[*frame_index], true);
                     gl::Flush();
                     let now = Instant::now();
                     if now.duration_since(*last_time).as_secs_f64() >= 1.0 {

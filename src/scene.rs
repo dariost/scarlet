@@ -785,35 +785,36 @@ impl Scene {
         None
     }
 
-    pub fn draw(&mut self, frame: &str) {
-        const MAX_LIGHTS: usize = 24;
+    pub fn draw(&mut self, frame: &str, realtime: bool) -> bool {
+        const MAX_LIGHTS: usize = 32;
         let shader = &mut self.prepare_shader;
         self.passes.bind();
         shader.activate();
-        let mut camera_transform = Similarity3::<f32>::identity();
-        let perspective = self.camera.borrow().camera.as_ref().unwrap().perspective;
-        let projection = perspective.to_projective();
         let mut light_info = Vec::new();
-        let mut node = Some(Rc::downgrade(&self.camera));
-        while let Some(cn) = node {
-            let cn = cn.upgrade().expect("Camera unalloc'd");
-            camera_transform = cn.borrow().transform * camera_transform;
-            node = cn.borrow().parent.clone();
-        }
-        let cp = camera_transform.transform_point(&Point3::<f32>::new(0.0, 0.0, 0.0));
-        let cm = projection * camera_transform.inverse();
-        for light in &self.lights {
-            let lstruct = light.borrow().light.clone().unwrap();
-            let mut node = Some(Rc::downgrade(&light));
-            let mut light_transform = Similarity3::<f32>::identity();
-            while let Some(ln) = node {
-                let ln = ln.upgrade().expect("Light unalloc'd");
-                light_transform = ln.borrow().transform * light_transform;
-                node = ln.borrow().parent.clone();
+        let mut queue = vec![(self.root.clone(), Similarity3::<f32>::identity())];
+        let mut camstruct = None;
+        while let Some(mut node) = queue.pop() {
+            node.1 = node.1 * node.0.borrow().transform;
+            if let Some(camera) = &node.0.borrow().camera {
+                let trans_matrix = node.1;
+                let projection = camera.perspective.to_projective();
+                camstruct = Some((
+                    trans_matrix.transform_point(&Point3::<f32>::new(0.0, 0.0, 0.0)),
+                    projection * trans_matrix.inverse(),
+                ));
             }
-            let point = light_transform.transform_point(&Point3::<f32>::new(0.0, 0.0, 0.0));
-            light_info.push((point, lstruct));
+            if let Some(light) = &node.0.borrow().light {
+                let trans_matrix = node.1;
+                let point = trans_matrix.transform_point(&Point3::<f32>::new(0.0, 0.0, 0.0));
+                light_info.push((point, light.clone()));
+            }
+            for child in &node.0.borrow().children {
+                queue.push((child.clone(), node.1));
+            }
         }
+        let camstruct = camstruct.unwrap();
+        let cp = camstruct.0;
+        let cm = camstruct.1;
         shader.uniformMat4f("camera", cm.to_homogeneous().into());
         let mut queue = vec![(self.root.clone(), Similarity3::<f32>::identity())];
         while let Some(mut node) = queue.pop() {
@@ -873,6 +874,7 @@ impl Scene {
         if self.fps.len() > 127 {
             self.fps_total -= self.fps.pop_front().expect("cannot fail");
         }
+        false
     }
 
     pub fn get_fps(&self) -> f64 {
