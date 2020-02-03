@@ -51,7 +51,9 @@ pub struct Scene {
     fps_total: f64,
     last_frame_time: Instant,
     animation: HashMap<usize, BTreeMap<u64, Similarity3<f32>>>,
-    animation_step: BTreeSet<u64>,
+    animation_step: Vec<u64>,
+    start_time: Instant,
+    frame_count: usize,
 }
 
 #[derive(Debug)]
@@ -752,6 +754,7 @@ pub fn import_scene(asset: &[u8], width: u32, height: u32) -> Scene {
     ssra.attach(include_str!("shaders/ssra.vert"), ShaderType::Vertex);
     ssra.attach(include_str!("shaders/ssra.frag"), ShaderType::Fragment);
     ssra.compile();
+    let animation_time = animation_time.into_iter().collect();
     Scene {
         root: root_node,
         lights: lights,
@@ -768,6 +771,8 @@ pub fn import_scene(asset: &[u8], width: u32, height: u32) -> Scene {
         last_frame_time: Instant::now(),
         animation: animation_map,
         animation_step: animation_time,
+        frame_count: 0,
+        start_time: Instant::now(),
     }
 }
 
@@ -786,15 +791,37 @@ impl Scene {
     }
 
     pub fn draw(&mut self, frame: &str, realtime: bool) -> bool {
+        fn get_animation(scene: &mut Scene, node: usize, realtime: bool) -> Similarity3<f32> {
+            let mut animation = Similarity3::<f32>::identity();
+            if !realtime {
+                if let Some(animap) = scene.animation.get(&node) {
+                    if let Some(elem) = animap.range(0..=scene.frame_count as u64).rev().nth(0) {
+                        animation *= elem.1;
+                    }
+                }
+            } else {
+                if scene.animation_step.len() > 0 {
+                    let tick = (Instant::now().duration_since(scene.start_time).as_millis()
+                        % *scene.animation_step.last().unwrap() as u128)
+                        as u64;
+                    if let Some(animap) = scene.animation.get(&node) {
+                        if let Some(elem) = animap.range(0..=tick).rev().nth(0) {
+                            animation *= elem.1;
+                        }
+                    }
+                }
+            }
+            animation
+        }
         const MAX_LIGHTS: usize = 32;
-        let shader = &mut self.prepare_shader;
         self.passes.bind();
-        shader.activate();
+        self.prepare_shader.activate();
         let mut light_info = Vec::new();
         let mut queue = vec![(self.root.clone(), Similarity3::<f32>::identity())];
         let mut camstruct = None;
         while let Some(mut node) = queue.pop() {
             node.1 = node.1 * node.0.borrow().transform;
+            node.1 *= get_animation(self, node.0.borrow().id, realtime);
             if let Some(camera) = &node.0.borrow().camera {
                 let trans_matrix = node.1;
                 let projection = camera.perspective.to_projective();
@@ -815,14 +842,16 @@ impl Scene {
         let camstruct = camstruct.unwrap();
         let cp = camstruct.0;
         let cm = camstruct.1;
-        shader.uniformMat4f("camera", cm.to_homogeneous().into());
+        self.prepare_shader
+            .uniformMat4f("camera", cm.to_homogeneous().into());
         let mut queue = vec![(self.root.clone(), Similarity3::<f32>::identity())];
         while let Some(mut node) = queue.pop() {
             node.1 = node.1 * node.0.borrow().transform;
+            node.1 *= get_animation(self, node.0.borrow().id, realtime);
             if let Some(mesh) = &node.0.borrow().mesh {
                 let trans_matrix = node.1.to_homogeneous().into();
-                shader.uniformMat4f("world", trans_matrix);
-                mesh.draw(shader);
+                self.prepare_shader.uniformMat4f("world", trans_matrix);
+                mesh.draw(&mut self.prepare_shader);
             }
             for child in &node.0.borrow().children {
                 queue.push((child.clone(), node.1));
@@ -874,7 +903,13 @@ impl Scene {
         if self.fps.len() > 127 {
             self.fps_total -= self.fps.pop_front().expect("cannot fail");
         }
-        false
+        self.frame_count += 1;
+        if self.animation_step.len() == 0 || self.frame_count == self.animation_step.len() {
+            self.frame_count = 0;
+            true
+        } else {
+            false
+        }
     }
 
     pub fn get_fps(&self) -> f64 {
