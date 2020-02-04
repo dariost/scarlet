@@ -3,6 +3,7 @@ use crate::shader::{Shader, ShaderType};
 use glad_gles2::gl;
 use gltf::animation::util::ReadOutputs;
 use gltf::buffer::Source;
+use gltf::image;
 use gltf::khr_lights_punctual::Kind;
 use na::geometry::{Perspective3, Point3, Quaternion, Similarity3, Translation3, UnitQuaternion};
 use nalgebra as na;
@@ -94,10 +95,13 @@ pub struct RenderData {
 
 impl RenderData {
     pub fn draw(&self, shader: &mut Shader) {
+        shader.uniform1i("material.albedo_sampler", 0);
         shader.uniform4f("material.albedo", self.material.color);
         shader.uniform1f("material.metalness", self.material.metallic);
         shader.uniform1f("material.roughness", self.material.roughness);
         unsafe {
+            gl::ActiveTexture(gl::GL_TEXTURE0);
+            gl::BindTexture(gl::GL_TEXTURE_2D, self.material.albedo);
             gl::BindVertexArray(self.vao);
             gl::DrawArrays(self.mode, 0, self.n_elements);
         }
@@ -467,6 +471,7 @@ impl Mesh {
 
 #[derive(Debug, Default)]
 pub struct Material {
+    albedo: gl::GLuint,
     pub color: [f32; 4],
     pub metallic: f32,
     pub roughness: f32,
@@ -518,18 +523,120 @@ impl RenderData {
     }
 }
 
-pub fn create_mesh(mesh: gltf::Mesh, buffers: &Vec<gltf::buffer::Data>) -> Mesh {
+pub fn create_mesh(
+    mesh: gltf::Mesh,
+    buffers: &[gltf::buffer::Data],
+    images: &[image::Data],
+) -> Mesh {
     let name = String::from(mesh.name().unwrap_or("NULL"));
     let mut data = Vec::new();
     for primitive in mesh.primitives() {
         let mut rd = RenderData::new();
         rd.mode = primitive.mode().as_gl_enum();
         let model = primitive.material().pbr_metallic_roughness();
-        let material = Material {
+        let mut material = Material {
+            albedo: 0,
             color: model.base_color_factor(),
             metallic: model.metallic_factor(),
             roughness: model.roughness_factor(),
         };
+        unsafe {
+            gl::GenTextures(1, &mut material.albedo);
+            gl::BindTexture(gl::GL_TEXTURE_2D, material.albedo);
+            gl::PixelStorei(gl::GL_PACK_ALIGNMENT, 1);
+        }
+        if let Some(texture) = model.base_color_texture() {
+            if texture.tex_coord() != 0 {
+                error!("Assuming tex_coord 0, but it's {}", texture.tex_coord());
+            }
+            let texture = texture.texture();
+            assert_eq!(texture.index(), texture.source().index());
+            let index = texture.index();
+            let format = match images[index].format {
+                image::Format::R8G8B8 => gl::GL_RGB,
+                image::Format::R8G8B8A8 => gl::GL_RGBA,
+                _ => unimplemented!(),
+            };
+            let sampler = texture.sampler();
+            unsafe {
+                gl::TexImage2D(
+                    gl::GL_TEXTURE_2D,
+                    0,
+                    format as i32,
+                    images[index].width as i32,
+                    images[index].height as i32,
+                    0,
+                    format,
+                    gl::GL_UNSIGNED_BYTE,
+                    images[index].pixels.as_ptr() as *const c_void,
+                );
+                gl::GenerateMipmap(gl::GL_TEXTURE_2D);
+                gl::TexParameteri(
+                    gl::GL_TEXTURE_2D,
+                    gl::GL_TEXTURE_MIN_FILTER,
+                    sampler
+                        .min_filter()
+                        .unwrap_or(gltf::texture::MinFilter::LinearMipmapLinear)
+                        .as_gl_enum() as i32,
+                );
+                gl::TexParameteri(
+                    gl::GL_TEXTURE_2D,
+                    gl::GL_TEXTURE_MAG_FILTER,
+                    sampler
+                        .mag_filter()
+                        .unwrap_or(gltf::texture::MagFilter::Linear)
+                        .as_gl_enum() as i32,
+                );
+                gl::TexParameteri(
+                    gl::GL_TEXTURE_2D,
+                    gl::GL_TEXTURE_WRAP_S,
+                    sampler.wrap_s().as_gl_enum() as i32,
+                );
+                gl::TexParameteri(
+                    gl::GL_TEXTURE_2D,
+                    gl::GL_TEXTURE_WRAP_T,
+                    sampler.wrap_s().as_gl_enum() as i32,
+                );
+            }
+        } else {
+            let white: [u8; 4] = [255; 4];
+            unsafe {
+                gl::TexImage2D(
+                    gl::GL_TEXTURE_2D,
+                    0,
+                    gl::GL_RGBA as i32,
+                    1,
+                    1,
+                    0,
+                    gl::GL_RGBA,
+                    gl::GL_UNSIGNED_BYTE,
+                    white.as_ptr() as *const c_void,
+                );
+                gl::TexParameteri(
+                    gl::GL_TEXTURE_2D,
+                    gl::GL_TEXTURE_MIN_FILTER,
+                    gl::GL_NEAREST as i32,
+                );
+                gl::TexParameteri(
+                    gl::GL_TEXTURE_2D,
+                    gl::GL_TEXTURE_MAG_FILTER,
+                    gl::GL_NEAREST as i32,
+                );
+                gl::TexParameteri(
+                    gl::GL_TEXTURE_2D,
+                    gl::GL_TEXTURE_WRAP_S,
+                    gl::GL_CLAMP_TO_EDGE as i32,
+                );
+                gl::TexParameteri(
+                    gl::GL_TEXTURE_2D,
+                    gl::GL_TEXTURE_WRAP_T,
+                    gl::GL_CLAMP_TO_EDGE as i32,
+                );
+            }
+        }
+        unsafe {
+            gl::BindTexture(gl::GL_TEXTURE_2D, 0);
+        }
         rd.material = material;
         let reader = primitive.reader(|x| {
             assert!(match x.source() {
@@ -540,6 +647,11 @@ pub fn create_mesh(mesh: gltf::Mesh, buffers: &Vec<gltf::buffer::Data>) -> Mesh 
         });
         let pos: Vec<_> = reader.read_positions().expect("No positions!").collect();
         let norm: Vec<_> = reader.read_normals().expect("No normals!").collect();
+        let texcoord: Vec<_> = if let Some(tex) = reader.read_tex_coords(0) {
+            tex.into_f32().collect()
+        } else {
+            vec![[0.0, 0.0]; pos.len()]
+        };
         let ind: Vec<_> = match reader.read_indices() {
             Some(x) => x.into_u32().map(|y| y as usize).collect(),
             None => (0..pos.len()).collect(),
@@ -550,6 +662,9 @@ pub fn create_mesh(mesh: gltf::Mesh, buffers: &Vec<gltf::buffer::Data>) -> Mesh 
             }
             for j in 0..3 {
                 rd.buffer.push(norm[i][j]);
+            }
+            for j in 0..2 {
+                rd.buffer.push(texcoord[i][j]);
             }
             rd.n_elements += 1;
         }
@@ -567,7 +682,7 @@ pub fn create_mesh(mesh: gltf::Mesh, buffers: &Vec<gltf::buffer::Data>) -> Mesh 
                 3,
                 gl::GL_FLOAT,
                 gl::GL_FALSE,
-                6 * size_of::<gl::GLfloat>() as i32,
+                8 * size_of::<gl::GLfloat>() as i32,
                 null(),
             );
             gl::VertexAttribPointer(
@@ -575,11 +690,20 @@ pub fn create_mesh(mesh: gltf::Mesh, buffers: &Vec<gltf::buffer::Data>) -> Mesh 
                 3,
                 gl::GL_FLOAT,
                 gl::GL_FALSE,
-                6 * size_of::<gl::GLfloat>() as i32,
+                8 * size_of::<gl::GLfloat>() as i32,
                 null::<c_void>().offset(3 * size_of::<gl::GLfloat>() as isize),
+            );
+            gl::VertexAttribPointer(
+                2,
+                2,
+                gl::GL_FLOAT,
+                gl::GL_FALSE,
+                8 * size_of::<gl::GLfloat>() as i32,
+                null::<c_void>().offset(6 * size_of::<gl::GLfloat>() as isize),
             );
             gl::EnableVertexAttribArray(0);
             gl::EnableVertexAttribArray(1);
+            gl::EnableVertexAttribArray(2);
             gl::BindBuffer(gl::GL_ARRAY_BUFFER, 0);
             gl::BindVertexArray(0);
         }
@@ -590,7 +714,7 @@ pub fn create_mesh(mesh: gltf::Mesh, buffers: &Vec<gltf::buffer::Data>) -> Mesh 
 
 pub fn import_scene(asset: &[u8], width: u32, height: u32) -> Scene {
     let aspect_ratio = width as f32 / height as f32;
-    let (document, buffers, _images) = gltf::import_slice(asset).expect("Cannot import asset!");
+    let (document, buffers, images) = gltf::import_slice(asset).expect("Cannot import asset!");
     let scene = document.scenes().nth(0).expect("No scenes in asset!");
     let mut root_node = RealSceneNode::default();
     let mut camera = None;
@@ -601,7 +725,8 @@ pub fn import_scene(asset: &[u8], width: u32, height: u32) -> Scene {
         mut camera: &mut Option<SceneNode>,
         mut lights: &mut Vec<SceneNode>,
         ar: f32,
-        buffers: &Vec<gltf::buffer::Data>,
+        buffers: &[gltf::buffer::Data],
+        images: &[image::Data],
     ) {
         let mut scene_node = RealSceneNode::default();
         scene_node.id = node.index();
@@ -648,7 +773,7 @@ pub fn import_scene(asset: &[u8], width: u32, height: u32) -> Scene {
             lights.push(scene_node.clone());
         }
         if let Some(mesh) = node.mesh() {
-            scene_node.borrow_mut().mesh = Some(create_mesh(mesh, buffers));
+            scene_node.borrow_mut().mesh = Some(create_mesh(mesh, buffers, images));
         }
         for child in node.children() {
             construct_scene(
@@ -658,6 +783,7 @@ pub fn import_scene(asset: &[u8], width: u32, height: u32) -> Scene {
                 &mut lights,
                 ar,
                 buffers,
+                images,
             );
         }
         scene_node.borrow_mut().parent = Some(Rc::downgrade(parent));
@@ -673,6 +799,7 @@ pub fn import_scene(asset: &[u8], width: u32, height: u32) -> Scene {
             &mut lights,
             aspect_ratio,
             &buffers,
+            &images,
         );
     }
     let mut animation_map: HashMap<usize, BTreeMap<u64, Similarity3<f32>>> = HashMap::new();
