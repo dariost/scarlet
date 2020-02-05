@@ -4,7 +4,7 @@
 \usepackage[english]{babel}
 
 \begin{document}
-\title{\textsc{Scarlet} \\ \large An implementation of Screen Space Reflections in a deferred rendering pipeline based on metallic workflow}
+\title{\textsc{Scarlet} \\ \large An OpenGL ES renderer implementing Screen Space Reflection in a metallic workflow deferred rendering pipeline}
 \author{Dario Ostuni}
 \date{}
 \maketitle
@@ -12,5 +12,11 @@
 \tableofcontents
 
 \chapter{Introduction}
+\textit{Screen Space Reflection} (SSR) is a post-processing technique to calculate reflections using screen-space data. SSR is quite expensive in terms of computational resources needed (especially time resources), but when used in adequate situations it can create great reflections effects that could only be otherwise created with other, more expensive, global illumination techniques.
 
+\textsc{Scarlet} is an OpenGL ES renderer that was written to show the implementations details and the pros and cons of the SSR technique. \textsc{Scarlet} is written in Rust and it implements SSR inside a metallic workflow deferred rendering pipeline. It will be shown how \textsc{Scarlet} functions, what are its main components, and how SSR is implemented inside it.
+
+Using a benchmark scene the performance cost of SSR in various configurations and the quality of the effects it creates will be evaluated. In order to provide a more accurate evaluation \textsc{Scarlet} implements more than just the bare minimum graphics tooling needed for SSR, such as generic scene loading through glTF (GL Transmission Format), scene graph based rigid body animations, albedo textures support, gamma correction, etc.
+
+\chapter{Scarlet}
 \end{document}
