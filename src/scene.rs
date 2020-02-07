@@ -1035,11 +1035,22 @@ impl Scene {
             self.fps_total -= self.fps.pop_front().expect("cannot fail");
         }
         self.frame_count += 1;
-        if self.animation_step.len() == 0 || self.frame_count == self.animation_step.len() {
-            self.frame_count = 0;
-            true
+        if realtime {
+            if self.animation_step.len() == 0
+                || Instant::now().duration_since(self.start_time).as_millis()
+                    >= *self.animation_step.last().unwrap() as u128
+            {
+                true
+            } else {
+                false
+            }
         } else {
-            false
+            if self.animation_step.len() == 0 || self.frame_count == self.animation_step.len() {
+                self.frame_count = 0;
+                true
+            } else {
+                false
+            }
         }
     }
 
