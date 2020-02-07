@@ -2,9 +2,10 @@
 
 \usepackage[hidelinks]{hyperref}
 \usepackage[english]{babel}
+\usepackage[svgnames]{xcolor}
 
 \begin{document}
-\title{\textsc{Scarlet} \\ \large An OpenGL ES renderer implementing Screen Space Reflection in a metallic workflow deferred rendering pipeline}
+\title{\textsc{Scarlet} \\ \large An OpenGL renderer implementing screen space reflection in a metallic workflow deferred rendering pipeline}
 \author{Dario Ostuni}
 \date{}
 \maketitle
@@ -14,9 +15,94 @@
 \chapter{Introduction}
 \textit{Screen Space Reflection} (SSR) is a post-processing technique to calculate reflections using screen-space data. SSR is quite expensive in terms of computational resources needed (especially time resources), but when used in adequate situations it can create great reflections effects that could only be otherwise created with other, more expensive, global illumination techniques.
 
-\textsc{Scarlet} is an OpenGL ES renderer that was written to show the implementations details and the pros and cons of the SSR technique. \textsc{Scarlet} is written in Rust and it implements SSR inside a metallic workflow deferred rendering pipeline. It will be shown how \textsc{Scarlet} functions, what are its main components, and how SSR is implemented inside it.
+\textsc{Scarlet} is an OpenGL renderer that was written to show the implementations details and the pros and cons of the SSR technique. \textsc{Scarlet} is written in Rust and it implements SSR inside a metallic workflow deferred rendering pipeline. It will be shown how \textsc{Scarlet} functions, what are its main components, and how SSR is implemented inside it.
 
 Using a benchmark scene the performance cost of SSR in various configurations and the quality of the effects it creates will be evaluated. In order to provide a more accurate evaluation \textsc{Scarlet} implements more than just the bare minimum graphics tooling needed for SSR, such as generic scene loading through glTF (GL Transmission Format), scene graph based rigid body animations, albedo textures support, gamma correction, etc.
 
 \chapter{Scarlet}
+\textsc{Scarlet} is a real-time renderer written in Rust. It can use either OpenGL ES 3.0 or OpenGL 3.3 with the \texttt{GL\_ARB\_ES3\_compatibility} extension as back-ends. It implements various utilities:
+\begin{itemize}
+	\item a window management layer (\texttt{Application}) that simplifies window creation (using \textit{winit}), context management (using \textit{glutin}) and OpenGL functions loading (using \textit{glad});
+	\item an OpenGL debugging utility based on \texttt{GL\_KHR\_debug} (using \textit{log});
+	\item a scene graph (\texttt{Scene}) that maintains the hierarchy of a scene using similarities (using \textit{nalgebra}) for describing parent-child transformations;
+	\item a shader class (\texttt{Shader}) for easier shader management;
+	\item a generic scene loader (\texttt{import\_scene} and related classes) that reads a scene in glTF format (using \textit{it}) and imports the scene graph, meshes, lights, cameras, rigid-body animations and albedo textures;
+	\item a \textit{physically based rendering} algorithm called \textit{metallic workflow};
+	\item a \textit{deferred rendering} pipeline, capable of showing the individual \textit{G-Buffers};
+	\item a \textit{screen space reflection} post-processing shader based on \textit{binary cone-tracing};
+	\item a \textbf{static\_viewer} tool to show a scene imported from a glTF file;
+	\item an \textbf{exporter} tool to create a video from a scene animation;
+	\item a \textbf{bench} tool to benchmark a scene.
+\end{itemize}
+
+\section{Application management}
+The \texttt{Application} class is the entry point of \textsc{Scarlet}, its constructor takes an \texttt{ApplicationOptions} struct, which defines with which options the application will be built. \texttt{ApplicationOptions} has the following members:
+\begin{itemize}
+	\item \textbf{title}: the window title;
+	\item \textbf{fullscreen}: a boolean flag for requesting a fullscreen window;
+	\item \textbf{vsync}: a boolean flag for requesting vertical sync;
+	\item \textbf{width}: the width of the window;
+	\item \textbf{height}: the height of the window;
+	\item \textbf{fps}: the maximum frames rendered per second;
+	\item \textbf{debug\_gl}: a boolean flag to enable internal OpenGL debugging.
+\end{itemize}
+
+If not given a specific value, each of this options as a default value, which, for some, can be overridden using an environment variable:
+\begin{itemize}
+	\item \texttt{SCARLET\_FULLSCREEN}: boolean flag for \textbf{fullscreen};
+	\item \texttt{SCARLET\_VSYNC}: boolean flag for \textbf{vsync};
+	\item \texttt{SCARLET\_FPS}: floating-point number for \textbf{fps};
+	\item \texttt{SCARLET\_DEBUG\_GL}: boolean flag for \textbf{debug\_gl}.
+\end{itemize}
+
+When the constructor is called, a window corresponding to the options given will be built. When ready to start the rendering loop, a closure can be passed to the method \texttt{run}, which will be run each time a new frame must be shown or when the window receives an input. Once \texttt{run} is invoked, \textsc{Scarlet} will never give back control of the application flow, instead it will be controlled by the closure passed which has to return at each invocation an \texttt{ApplicationAction} back:
+\begin{itemize}
+	\item \textit{Refresh}: the closure has updated the frame, and the window must refresh its contents;
+	\item \textit{Quit}: the program must be closed;
+	\item \textit{Nothing}: the closure has not updated the frame, and can be called again when needed.
+\end{itemize}
+
+\section{OpenGL debugging}
+Debugging programs that use OpenGL can be hard, so an extension called \texttt{GL\_KHR\_debug} has been made by the Khronos Group to ease the process.
+
+If the \texttt{GL\_KHR\_debug} extension is supported by the OpenGL driver and if the user has enabled the \textbf{debug\_gl} options, \textsc{Scarlet} will create an information reporting callback using \texttt{GL\_KHR\_debug} on the OpenGL driver side and the \textit{log} crate to show to the user the logging of the OpenGL driver.
+
+If the OpenGL driver will have any information to report (such as invalid function calls, performance issues, etc.) \textsc{Scarlet} will report them on the console with a color representing the appropriate severity level:
+\begin{itemize}
+	\item Trace: {\color{magenta}magenta}
+	\item Debug: {\color{cyan}cyan}
+	\item Info: {\color{DarkGreen}dark green}
+	\item Warning: {\color{Gold}gold}
+	\item Error: {\color{FireBrick}firebrick}
+\end{itemize}
+
+\section{Shader class}
+The \texttt{Shader} class is a utility to handle the loading, compilation and use of vertex and fragment shaders.
+
+One can create a new \texttt{Shader} object and \texttt{attach} new shader sources, and \texttt{compile} them when finished. To aid OpenGL debugging functionality one can specify names for debugging by using the specialized \texttt{attach\_with\_name} and \texttt{compile\_with\_name} methods.
+
+When needed, the shader can be used by calling the \texttt{activate} method. The \texttt{Shader} class also provide the loading of shader uniform variables using the \texttt{uniform*} family of methods, such as \texttt{uniform1ui}, \texttt{uniformMat4f}, etc.
+
+If anything fails, it will be reported to the user on the console, in a simplified form if the OpenGL debugging functionality is disabled or in full form otherwise.
+
+\section{Scene Graph}
+
+\section{glTF importer}
+
+\section{Metallic Workflow}
+
+\section{Deferred rendering}
+
+\section{Screen Space Reflection}
+
+\section{Static viewer}
+
+\section{Video exporter}
+
+\section{Benchmark tool}
+
+\chapter{Evaluation}
+
+\chapter{Conclusions}
+
 \end{document}
