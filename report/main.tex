@@ -86,8 +86,34 @@ When needed, the shader can be used by calling the \texttt{activate} method. The
 If anything fails, it will be reported to the user on the console, in a simplified form if the OpenGL debugging functionality is disabled or in full form otherwise.
 
 \section{Scene Graph}
+In order to ease the display and manipulation of non-trivial scenes, a scene graph has been implemented. The scene graph is represented by the objects of the \texttt{Scene} class, while the scene graph nodes are of type \texttt{SceneNode}.
+
+The \texttt{Scene} object contains the root \texttt{SceneNode} and other useful information, such as the animations present in the scene, performance information, the shaders used in the scene, etc. It also contains all the buffers needed for the deferred rendering pipeline.
+
+A \texttt{SceneNode} represents a node in the scene graph, and it holds the following information:
+\begin{itemize}
+	\item \textbf{id}: a unique identifier;
+	\item \textbf{transform}: the affine transformation relative to the parent, it's saved as a similarity (a scalar for the scale factor, an unit quaternion for the rotation and a vector for the translation);
+	\item \textbf{children}: the children of this \texttt{SceneNode};
+	\item \textbf{parent}: the parent of this \texttt{SceneNode};
+	\item \textbf{name} (\textit{optional}): the name of this \texttt{SceneNode};
+	\item \textbf{camera} (\textit{optional}): the \texttt{Camera} information of this node;
+	\item \textbf{light} (\textit{optional}): the \texttt{Light} information of this node;
+	\item \textbf{mesh} (\textit{optional}): the \texttt{Mesh} information of this node;
+\end{itemize}
+
+A \texttt{Camera} object represents a camera, and holds the perspective transformation (explicitly) and the position, look at, and up vector of the camera (implicitly, it's defined by composition of the transformations of the ancestor of the camera node).
+
+A \texttt{Light} object represents a point or directional light, and holds the color, intensity and type of the light.
+
+A \texttt{Mesh} object represents a mesh, which is a collection of geometric primitives (usually triangles) with properties such as position, normal vector, texture coordinates, etc. It also holds the information about the \texttt{Material} of the mesh, which is defined by an albedo color (possibly a texture), a metalness factor and a roughness factor.
+
+When the scene needs to be rendered, the scene graph is traversed using an iterative depth-first search, accumulating the transformations during the path taken (applying also animations, if any), and all meshes are rendered, all lights are acknowledged and the perspective matrix is taken from the camera.
 
 \section{glTF importer}
+\textsc{Scarlet} uses glTF 2.0 as the scene input format. glTF is a complete and compact format for saving scenes which include a scene graph, meshes, textures, animations (rigid-body, skeletal or morphing), materials (metalness-roughness or specularity-glossiness), lights, cameras and much more. \textsc{Scarlet} only supports a subset of glTF.
+
+\texttt{Scarlet} uses the \textit{gltf} crate to parse both serialized formats of glTF (\texttt{.gltf} and \texttt{.glb}) and decode the textures contained within. When parsed, it construct a \texttt{Scene} by walking the glTF scene graph and converting it to the \textsc{Scarlet} internal scene graph format, while also creating all the necessary OpenGL vertex buffer objects, vertex array objects and textures.
 
 \section{Metallic Workflow}
 
