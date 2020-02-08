@@ -51,16 +51,60 @@ pub struct Scene {
     fps: VecDeque<f64>,
     fps_total: f64,
     last_frame_time: Instant,
-    animation: HashMap<usize, BTreeMap<u64, Similarity3<f32>>>,
+    animation: HashMap<usize, BTreeMap<u64, Transform>>,
     animation_step: Vec<u64>,
     start_time: Instant,
     frame_count: usize,
 }
 
+#[derive(Debug, Clone)]
+pub struct Transform {
+    pub scaling: Option<f32>,
+    pub translation: Option<Translation3<f32>>,
+    pub rotation: Option<UnitQuaternion<f32>>,
+}
+
+impl Transform {
+    pub fn identity() -> Self {
+        Transform {
+            scaling: Some(1.0),
+            translation: Some(Translation3::<f32>::identity()),
+            rotation: Some(UnitQuaternion::<f32>::identity()),
+        }
+    }
+
+    pub fn get_similarity(&self) -> Similarity3<f32> {
+        Similarity3::<f32>::from_parts(
+            self.translation.unwrap(),
+            self.rotation.unwrap(),
+            self.scaling.unwrap(),
+        )
+    }
+
+    pub fn compose(&self, other: Transform) -> Transform {
+        let result = self.get_similarity() * other.get_similarity();
+        Transform {
+            scaling: Some(result.scaling()),
+            rotation: Some(result.isometry.rotation),
+            translation: Some(result.isometry.translation),
+        }
+    }
+}
+
+impl Default for Transform {
+    fn default() -> Self {
+        Transform {
+            scaling: None,
+            translation: None,
+            rotation: None,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct RealSceneNode {
     pub id: usize,
-    pub transform: Similarity3<f32>,
+    pub transform: Transform,
     children: Vec<SceneNode>,
     parent: Option<Weak<RefCell<RealSceneNode>>>,
     name: String,
@@ -483,7 +527,7 @@ impl Default for RealSceneNode {
     fn default() -> Self {
         RealSceneNode {
             id: 0,
-            transform: Similarity3::<f32>::identity(),
+            transform: Transform::default(),
             children: Vec::new(),
             name: String::from("NULL"),
             parent: None,
@@ -737,12 +781,14 @@ pub fn import_scene(asset: &[u8], width: u32, height: u32) -> Scene {
         let rotation = UnitQuaternion::<f32>::from_quaternion(rotation);
         if scaling[0] != scaling[1] || scaling[1] != scaling[2] {
             warn!(
-                "Node \"{}\": non uniform scaling is not supported!",
-                scene_node.name
+                "Node \"{}\": non uniform scaling is not supported: ({}, {}, {})",
+                scene_node.name, scaling[0], scaling[1], scaling[2]
             );
         }
         let scaling = scaling[0];
-        scene_node.transform = Similarity3::<f32>::from_parts(translation, rotation, scaling);
+        scene_node.transform.scaling = Some(scaling);
+        scene_node.transform.translation = Some(translation);
+        scene_node.transform.rotation = Some(rotation);
         let mut scene_node = Rc::new(RefCell::new(scene_node));
         if let Some(ccamera) = node.camera() {
             if camera.is_some() {
@@ -793,6 +839,8 @@ pub fn import_scene(asset: &[u8], width: u32, height: u32) -> Scene {
         parent.borrow_mut().children.push(scene_node);
     }
     root_node.name = String::from("ROOT_NODE");
+    root_node.id = usize::max_value();
+    root_node.transform = Transform::identity();
     let mut root_node = Rc::new(RefCell::new(root_node));
     for node in scene.nodes() {
         construct_scene(
@@ -805,7 +853,7 @@ pub fn import_scene(asset: &[u8], width: u32, height: u32) -> Scene {
             &images,
         );
     }
-    let mut animation_map: HashMap<usize, BTreeMap<u64, Similarity3<f32>>> = HashMap::new();
+    let mut animation_map: HashMap<usize, BTreeMap<u64, Transform>> = HashMap::new();
     let mut animation_time: BTreeSet<u64> = BTreeSet::new();
     for animation in document.animations() {
         for channel in animation.channels() {
@@ -825,45 +873,30 @@ pub fn import_scene(asset: &[u8], width: u32, height: u32) -> Scene {
                 for anim in inputs.zip(iter) {
                     let tick = (anim.0 * 1000.0) as u64;
                     animation_time.insert(tick);
-                    obj_animation
-                        .entry(tick)
-                        .or_insert(Similarity3::<f32>::identity());
+                    obj_animation.entry(tick).or_insert(Transform::default());
                     if anim.1[0] != anim.1[1] || anim.1[1] != anim.1[2] {
                         error!("Non uniform scaling!");
                     }
-                    obj_animation
-                        .get_mut(&tick)
-                        .unwrap()
-                        .append_scaling_mut(anim.1[0]);
+                    obj_animation.get_mut(&tick).unwrap().scaling = Some(anim.1[0]);
                 }
             } else if let ReadOutputs::Translations(iter) = outputs {
                 for anim in inputs.zip(iter) {
                     let tick = (anim.0 * 1000.0) as u64;
                     animation_time.insert(tick);
-                    obj_animation
-                        .entry(tick)
-                        .or_insert(Similarity3::<f32>::identity());
+                    obj_animation.entry(tick).or_insert(Transform::default());
                     let translation = Translation3::<f32>::new(anim.1[0], anim.1[1], anim.1[2]);
-                    obj_animation
-                        .get_mut(&tick)
-                        .unwrap()
-                        .append_translation_mut(&translation);
+                    obj_animation.get_mut(&tick).unwrap().translation = Some(translation);
                 }
             } else if let ReadOutputs::Rotations(iter) = outputs {
                 let iter = iter.into_f32();
                 for anim in inputs.zip(iter) {
                     let tick = (anim.0 * 1000.0) as u64;
                     animation_time.insert(tick);
-                    obj_animation
-                        .entry(tick)
-                        .or_insert(Similarity3::<f32>::identity());
+                    obj_animation.entry(tick).or_insert(Transform::default());
                     let rotation =
                         Quaternion::<f32>::new(anim.1[3], anim.1[0], anim.1[1], anim.1[2]);
                     let rotation = UnitQuaternion::<f32>::from_quaternion(rotation);
-                    obj_animation
-                        .get_mut(&tick)
-                        .unwrap()
-                        .append_rotation_mut(&rotation);
+                    obj_animation.get_mut(&tick).unwrap().rotation = Some(rotation);
                 }
             }
         }
@@ -925,8 +958,9 @@ impl Scene {
             scene: &mut Scene,
             node: usize,
             realtime: bool,
-        ) -> Option<Similarity3<f32>> {
-            let mut animation = None;
+            orig: Transform,
+        ) -> Transform {
+            let mut animation = orig.clone();
             if !realtime {
                 if let Some(animap) = scene.animation.get(&node) {
                     if let Some(elem) = animap
@@ -934,7 +968,9 @@ impl Scene {
                         .rev()
                         .nth(0)
                     {
-                        animation = Some(*elem.1);
+                        animation.rotation = elem.1.rotation.or(orig.rotation);
+                        animation.translation = elem.1.translation.or(orig.translation);
+                        animation.scaling = elem.1.scaling.or(orig.scaling);
                     }
                 }
             } else {
@@ -944,7 +980,9 @@ impl Scene {
                         as u64;
                     if let Some(animap) = scene.animation.get(&node) {
                         if let Some(elem) = animap.range(0..=tick).rev().nth(0) {
-                            animation = Some(*elem.1);
+                            animation.rotation = elem.1.rotation.or(orig.rotation);
+                            animation.translation = elem.1.translation.or(orig.translation);
+                            animation.scaling = elem.1.scaling.or(orig.scaling);
                         }
                     }
                 }
@@ -955,15 +993,17 @@ impl Scene {
         self.passes.bind();
         self.prepare_shader.activate();
         let mut light_info = Vec::new();
-        let mut queue = vec![(self.root.clone(), Similarity3::<f32>::identity())];
+        let mut queue = vec![(self.root.clone(), Transform::identity())];
         let mut camstruct = None;
         while let Some(mut node) = queue.pop() {
-            node.1 = match get_animation(self, node.0.borrow().id, realtime) {
-                None => node.1 * node.0.borrow().transform,
-                Some(trans) => node.1 * node.0.borrow().transform * trans,
-            };
+            node.1 = node.1.compose(get_animation(
+                self,
+                node.0.borrow().id,
+                realtime,
+                node.0.borrow().transform.clone(),
+            ));
             if let Some(camera) = &node.0.borrow().camera {
-                let trans_matrix = node.1;
+                let trans_matrix = node.1.get_similarity();
                 let projection = camera.perspective.to_projective();
                 camstruct = Some((
                     trans_matrix.transform_point(&Point3::<f32>::new(0.0, 0.0, 0.0)),
@@ -971,12 +1011,12 @@ impl Scene {
                 ));
             }
             if let Some(light) = &node.0.borrow().light {
-                let trans_matrix = node.1;
+                let trans_matrix = node.1.get_similarity();
                 let point = trans_matrix.transform_point(&Point3::<f32>::new(0.0, 0.0, 0.0));
                 light_info.push((point, light.clone()));
             }
             for child in &node.0.borrow().children {
-                queue.push((child.clone(), node.1));
+                queue.push((child.clone(), node.1.clone()));
             }
         }
         let camstruct = camstruct.unwrap();
@@ -984,19 +1024,21 @@ impl Scene {
         let cm = camstruct.1;
         self.prepare_shader
             .uniformMat4f("camera", cm.to_homogeneous().into());
-        let mut queue = vec![(self.root.clone(), Similarity3::<f32>::identity())];
+        let mut queue = vec![(self.root.clone(), Transform::identity())];
         while let Some(mut node) = queue.pop() {
-            node.1 = match get_animation(self, node.0.borrow().id, realtime) {
-                None => node.1 * node.0.borrow().transform,
-                Some(trans) => node.1 * node.0.borrow().transform * trans,
-            };
+            node.1 = node.1.compose(get_animation(
+                self,
+                node.0.borrow().id,
+                realtime,
+                node.0.borrow().transform.clone(),
+            ));
             if let Some(mesh) = &node.0.borrow().mesh {
-                let trans_matrix = node.1.to_homogeneous().into();
+                let trans_matrix = node.1.get_similarity().to_homogeneous().into();
                 self.prepare_shader.uniformMat4f("world", trans_matrix);
                 mesh.draw(&mut self.prepare_shader);
             }
             for child in &node.0.borrow().children {
-                queue.push((child.clone(), node.1));
+                queue.push((child.clone(), node.1.clone()));
             }
         }
         // PBR PASS

@@ -31,9 +31,8 @@ fn main() {
             } => ApplicationAction::Quit,
             Event::RedrawRequested { .. }
             | Event::NewEvents(StartCause::ResumeTimeReached { .. }) => unsafe {
-                sm.borrow_mut()
-                    .transform
-                    .append_rotation_mut(&UnitQuaternion::<f32>::from_euler_angles(0.0, 0.01, 0.0));
+                *sm.borrow_mut().transform.rotation.as_mut().unwrap() *=
+                    &UnitQuaternion::<f32>::from_euler_angles(0.0, 0.01, 0.0);
                 suzanne.draw("final", true);
                 gl::Flush();
                 ApplicationAction::Refresh
