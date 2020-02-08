@@ -736,7 +736,10 @@ pub fn import_scene(asset: &[u8], width: u32, height: u32) -> Scene {
         let rotation = Quaternion::<f32>::new(rotation[3], rotation[0], rotation[1], rotation[2]);
         let rotation = UnitQuaternion::<f32>::from_quaternion(rotation);
         if scaling[0] != scaling[1] || scaling[1] != scaling[2] {
-            warn!("Non uniform scaling is not supported!");
+            warn!(
+                "Node \"{}\": non uniform scaling is not supported!",
+                scene_node.name
+            );
         }
         let scaling = scaling[0];
         scene_node.transform = Similarity3::<f32>::from_parts(translation, rotation, scaling);
@@ -918,8 +921,12 @@ impl Scene {
     }
 
     pub fn draw(&mut self, frame: &str, realtime: bool) -> bool {
-        fn get_animation(scene: &mut Scene, node: usize, realtime: bool) -> Similarity3<f32> {
-            let mut animation = Similarity3::<f32>::identity();
+        fn get_animation(
+            scene: &mut Scene,
+            node: usize,
+            realtime: bool,
+        ) -> Option<Similarity3<f32>> {
+            let mut animation = None;
             if !realtime {
                 if let Some(animap) = scene.animation.get(&node) {
                     if let Some(elem) = animap
@@ -927,7 +934,7 @@ impl Scene {
                         .rev()
                         .nth(0)
                     {
-                        animation *= elem.1;
+                        animation = Some(*elem.1);
                     }
                 }
             } else {
@@ -937,7 +944,7 @@ impl Scene {
                         as u64;
                     if let Some(animap) = scene.animation.get(&node) {
                         if let Some(elem) = animap.range(0..=tick).rev().nth(0) {
-                            animation *= elem.1;
+                            animation = Some(*elem.1);
                         }
                     }
                 }
@@ -951,8 +958,10 @@ impl Scene {
         let mut queue = vec![(self.root.clone(), Similarity3::<f32>::identity())];
         let mut camstruct = None;
         while let Some(mut node) = queue.pop() {
-            node.1 = node.1 * node.0.borrow().transform;
-            node.1 *= get_animation(self, node.0.borrow().id, realtime);
+            node.1 = match get_animation(self, node.0.borrow().id, realtime) {
+                None => node.1 * node.0.borrow().transform,
+                Some(trans) => node.1 * node.0.borrow().transform * trans,
+            };
             if let Some(camera) = &node.0.borrow().camera {
                 let trans_matrix = node.1;
                 let projection = camera.perspective.to_projective();
@@ -977,8 +986,10 @@ impl Scene {
             .uniformMat4f("camera", cm.to_homogeneous().into());
         let mut queue = vec![(self.root.clone(), Similarity3::<f32>::identity())];
         while let Some(mut node) = queue.pop() {
-            node.1 = node.1 * node.0.borrow().transform;
-            node.1 *= get_animation(self, node.0.borrow().id, realtime);
+            node.1 = match get_animation(self, node.0.borrow().id, realtime) {
+                None => node.1 * node.0.borrow().transform,
+                Some(trans) => node.1 * node.0.borrow().transform * trans,
+            };
             if let Some(mesh) = &node.0.borrow().mesh {
                 let trans_matrix = node.1.to_homogeneous().into();
                 self.prepare_shader.uniformMat4f("world", trans_matrix);

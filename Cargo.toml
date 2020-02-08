@@ -18,3 +18,6 @@ features = ["extras", "names", "utils", "import", "KHR_lights_punctual"]
 [dev-dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+
+[patch.crates-io]
+gltf = { git = "https://github.com/dariost/gltf.git" }
