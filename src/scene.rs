@@ -10,6 +10,8 @@ use nalgebra as na;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::mem::size_of;
+use std::ops::Bound::Excluded;
+use std::ops::Bound::Included;
 use std::os::raw::c_void;
 use std::ptr::null;
 use std::rc::{Rc, Weak};
@@ -57,7 +59,7 @@ pub struct Scene {
     frame_count: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Transform {
     pub scaling: Option<f32>,
     pub translation: Option<Translation3<f32>>,
@@ -87,6 +89,32 @@ impl Transform {
             scaling: Some(result.scaling()),
             rotation: Some(result.isometry.rotation),
             translation: Some(result.isometry.translation),
+        }
+    }
+
+    pub fn lerp(&self, other: Transform, alpha: f32) -> Transform {
+        let scaling = Some(self.scaling.unwrap() * (1.0 - alpha) + other.scaling.unwrap() * alpha);
+        let rotation = Some(
+            self.rotation
+                .unwrap()
+                .slerp(&other.rotation.unwrap(), alpha),
+        );
+        let translation = Some(Translation3::<f32>::from(
+            self.translation.unwrap().vector * (1.0 - alpha)
+                + other.translation.unwrap().vector * alpha,
+        ));
+        Transform {
+            scaling,
+            rotation,
+            translation,
+        }
+    }
+
+    pub fn or(&self, other: Transform) -> Transform {
+        Transform {
+            scaling: self.scaling.or(other.scaling),
+            rotation: self.rotation.or(other.rotation),
+            translation: self.translation.or(other.translation),
         }
     }
 }
@@ -979,11 +1007,14 @@ impl Scene {
                         % *scene.animation_step.last().unwrap() as u128)
                         as u64;
                     if let Some(animap) = scene.animation.get(&node) {
-                        if let Some(elem) = animap.range(0..=tick).rev().nth(0) {
-                            animation.rotation = elem.1.rotation.or(orig.rotation);
-                            animation.translation = elem.1.translation.or(orig.translation);
-                            animation.scaling = elem.1.scaling.or(orig.scaling);
-                        }
+                        let prev = animap.range(0..=tick).rev().nth(0).unwrap_or((&0, &orig));
+                        let next = animap
+                            .range((Excluded(&tick), Included(&u64::max_value())))
+                            .rev()
+                            .nth(0)
+                            .unwrap_or_else(|| animap.iter().rev().nth(0).unwrap_or((&0, &orig)));
+                        let alpha = (tick - prev.0) as f32 / (next.0 - prev.0) as f32;
+                        animation = prev.1.or(orig).lerp(next.1.or(orig), alpha);
                     }
                 }
             }
