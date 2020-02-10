@@ -1013,7 +1013,11 @@ impl Scene {
                             .rev()
                             .nth(0)
                             .unwrap_or_else(|| animap.iter().rev().nth(0).unwrap_or((&0, &orig)));
-                        let alpha = (tick - prev.0) as f32 / (next.0 - prev.0) as f32;
+                        let alpha = if next.0 - prev.0 == 0 {
+                            0.0
+                        } else {
+                            (tick - prev.0) as f32 / (next.0 - prev.0) as f32
+                        };
                         animation = prev.1.or(orig).lerp(next.1.or(orig), alpha);
                     }
                 }
