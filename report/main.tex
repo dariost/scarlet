@@ -3,6 +3,7 @@
 \usepackage[hidelinks]{hyperref}
 \usepackage[english]{babel}
 \usepackage[svgnames]{xcolor}
+\usepackage{graphicx}
 
 \begin{document}
 \title{\textsc{Scarlet} \\ \large An OpenGL renderer implementing screen space reflection in a metallic workflow deferred rendering pipeline}
@@ -116,8 +117,101 @@ When the scene needs to be rendered, the scene graph is traversed using an itera
 \texttt{Scarlet} uses the \textit{gltf} crate to parse both serialized formats of glTF (\texttt{.gltf} and \texttt{.glb}) and decode the textures contained within. When parsed, it construct a \texttt{Scene} by walking the glTF scene graph and converting it to the \textsc{Scarlet} internal scene graph format, while also creating all the necessary OpenGL vertex buffer objects, vertex array objects and textures.
 
 \section{Metallic Workflow}
+\textit{Physically Based Rendering} (PBR) is a series of techniques to render realistic looking scenes. What it differs from other approaches as \textit{Gouraud} and \textit{Phong} is that PBR tries to be based on how light actually works in real life.
+
+\textit{Metallic Workflow} is one such PBR technique, originally developed by Disney and then adapted to work in real-time by Epic Games. When using \textit{Metallic Workflow} to each material is assigned an albedo color, a metalness factor and a roughness factor.
+
+The whole rendering process can be described by the following formula:
+$$ L_o(p, \omega_o) = \int \limits_{\Omega} k_d \frac{c}{\pi} + \frac{DFG}{4(\omega_o \cdot n)(\omega_i \cdot n)} L_i(p, \omega_i)n \cdot \omega_i d \omega_i $$
+
+where:
+\begin{itemize}
+	\item $L_o(p, \omega_o)$ is a function indicating how much light is going in direction $\omega_o$ from point $p$;
+	\item $k_d \frac{c}{\pi} + \frac{DFG}{4(\omega_o \cdot n)(\omega_i \cdot n)}$ is the Cook--Torrance Bidirectional Reflective Distribution Function, in other words, given an incoming direction $\omega_i$, an outgoing direction $\omega_o$ and a surface normal $n$ it gives the contribution of the light coming from $\omega_i$ to the direction $\omega_o$;
+	\item $k_d \frac{c}{\pi}$ is the Lambertian diffuse part of Cook--Torrance BRDF, where $k_d$ is the fraction of the light that gets refracted and $c$ is the surface color;
+	\item $D$ is the \textit{normal distribution function}, which measures how much the surface normals are aligned with the halfway vector (the normalized sum of the light direction and view direction); it's calculated as $\frac{\alpha^2}{\pi((n \cdot h)^2(\alpha^2 - 1) + 1)^2}$ where $\alpha$ is the roughness factor, $h$ is the halfway vector and $n$ is the surface normal;
+	\item $F$ is the \textit{Fresnel equation}, which is the ratio of the light which gets reflected over the light that gets refracted according to the angle we're looking at a surface; it's calculated as $F_0 + (1 - F_0)(1 - h \cdot v)^5$ where $v$ is the view direction and $F_0$ is the reflectivity of the surface, which is approximated by the product of the metalness factor and the surface color;
+	\item $G$ is the \textit{geometry function}, which measures how much the surface overshadows itself; it's calculated as $\frac{n \cdot v}{(n \cdot v)(1 - \frac{(\alpha + 1)^2}{8}) + \frac{(\alpha + 1)^2}{8}}$;
+	\item $L_i(p, \omega_i)$ is a function indicating how much light is incoming from direction $\omega_i$ to point $p$;
+	\item $n \cdot \omega_i$ scales the incoming light energy from $\omega_i$ using the angle between $\omega_i$ and $n$;
+	\item $\int \limits_{\Omega} ~\dots~ d \omega_i$ is a surface integral, meaning that it's the sum of the contribution of each incoming direction $\omega_i$.
+\end{itemize}
 
 \section{Deferred rendering}
+\textit{Deferred rendering} is a technique used to \textit{defer} as much as possible the heavy computations such as lighting, in order to reduce the number of geometric primitives on which the heavy computation will be run.
+
+In order to do so a first \textit{geometry pass} is performed, where certain information (such as fragment positions, normals, etc.) are saved in some special framebuffers called \textit{G-buffer}s. One all vertices have been processed, only the visible fragments will remain in the \textit{G-buffer}s, and we can use the information collected in them to then do the lighting, thus only doing the heavy computations for only what will actually be displayed.
+
+\textsc{Scarlet} implements a multi-pass deferred rendering pipeline, in which the passes are:
+\begin{enumerate}
+	\item geometry pass: renders the scene and collects information in \textit{G-buffer}s about position~[\ref{deferred:position}], normals~[\ref{deferred:normal}], albedo~[\ref{deferred:albedo}], metalness~[\ref{deferred:metalness}], roughness~[\ref{deferred:roughness}] and depth~[\ref{deferred:depth}];
+	\item PBR pass: using the information collected from the geometry pass, metallic workflow is applied to produce a PBR shading of the scene~[\ref{deferred:pbr}];
+	\item SSR pass: reflections are calculated for all points using screen space reflections~[\ref{deferred:ssr}];
+	\item final pass: the frames produced from the PBR and SSR passes are merged to produce the final rendered image~[\ref{deferred:final}].
+\end{enumerate}
+
+\begin{figure}[htp]
+	\centering
+	\includegraphics[width=\textwidth]{deferred/00position.png}
+	\caption{Position \textit{G-buffer}}
+	\label{deferred:position}
+\end{figure}
+
+\begin{figure}[htp]
+	\centering
+	\includegraphics[width=\textwidth]{deferred/01normal.png}
+	\caption{Normal \textit{G-buffer}}
+	\label{deferred:normal}
+\end{figure}
+
+\begin{figure}[htp]
+	\centering
+	\includegraphics[width=\textwidth]{deferred/02albedo.png}
+	\caption{Albedo \textit{G-buffer}}
+	\label{deferred:albedo}
+\end{figure}
+
+\begin{figure}[htp]
+	\centering
+	\includegraphics[width=\textwidth]{deferred/03metalness.png}
+	\caption{Metalness \textit{G-buffer}}
+	\label{deferred:metalness}
+\end{figure}
+
+\begin{figure}[htp]
+	\centering
+	\includegraphics[width=\textwidth]{deferred/04roughness.png}
+	\caption{Roughness \textit{G-buffer}}
+	\label{deferred:roughness}
+\end{figure}
+
+\begin{figure}[htp]
+	\centering
+	\includegraphics[width=\textwidth]{deferred/05depth.png}
+	\caption{Depth \textit{G-buffer}}
+	\label{deferred:depth}
+\end{figure}
+
+\begin{figure}[htp]
+	\centering
+	\includegraphics[width=\textwidth]{deferred/06pbr.png}
+	\caption{PBR \textit{G-buffer}}
+	\label{deferred:pbr}
+\end{figure}
+
+\begin{figure}[htp]
+	\centering
+	\includegraphics[width=\textwidth]{deferred/07ssr.png}
+	\caption{SSR \textit{G-buffer}}
+	\label{deferred:ssr}
+\end{figure}
+
+\begin{figure}[htp]
+	\centering
+	\includegraphics[width=\textwidth]{deferred/08final.png}
+	\caption{Final \textit{G-buffer}}
+	\label{deferred:final}
+\end{figure}
 
 \section{Screen Space Reflection}
 
