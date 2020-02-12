@@ -4,6 +4,7 @@ extern crate scarlet;
 #[macro_use]
 extern crate log;
 extern crate nalgebra as na;
+extern crate png;
 extern crate pretty_env_logger;
 
 use glad_gles2::gl;
@@ -12,6 +13,9 @@ use scarlet::{import_scene, Application, ApplicationAction, ApplicationOptions};
 use std::env::args;
 use std::ffi::c_void;
 use std::fs;
+use std::fs::File;
+use std::io::BufWriter;
+use std::path::Path;
 use std::time::Instant;
 
 fn main() {
@@ -20,12 +24,7 @@ fn main() {
     opt.title = String::from("Scarlet model viewer");
     let app = Application::with_options(&opt);
     let (width, height) = app.size();
-    let hs = format!("P6\n{} {}\n255\n", width, height);
-    let header = hs.as_bytes();
-    let mut framebuffer = vec![0_u8; width as usize * height as usize * 3 + header.len()];
-    for i in 0..header.len() {
-        framebuffer[i] = header[i];
-    }
+    let framebuffer = vec![0_u8; width as usize * height as usize * 3];
     let model = import_scene(
         &fs::read(args().nth(1).expect("missing args")).expect("cannot read file"),
         width,
@@ -43,9 +42,8 @@ fn main() {
             width,
             height,
             frame_cnt,
-            header.len(),
         ),
-        move |(model, last_time, frame_index, framebuffer, w, h, frame_cnt, header_len), ev| {
+        move |(model, last_time, frame_index, framebuffer, w, h, frame_cnt), ev| {
             //trace!("{:?}", ev);
             let frames = [
                 "final",
@@ -74,19 +72,25 @@ fn main() {
                         *h as i32,
                         gl::GL_RGB,
                         gl::GL_UNSIGNED_BYTE,
-                        framebuffer.as_mut_ptr().offset(*header_len as isize) as *mut c_void,
+                        framebuffer.as_mut_ptr() as *mut c_void,
                     );
                     gl::Finish();
                     for row in 0..(*h as usize / 2) {
-                        let of1 = *header_len + row * (*w as usize * 3);
-                        let of2 = *header_len + (*h as usize - row - 1) * (*w as usize * 3);
+                        let of1 = row * (*w as usize * 3);
+                        let of2 = (*h as usize - row - 1) * (*w as usize * 3);
                         for col in 0..(*w as usize * 3) {
                             framebuffer.swap(of1 + col, of2 + col);
                         }
                     }
-                    let frame_name = format!("frame{:06}.pnm", frame_cnt);
-                    fs::write(&frame_name, framebuffer)
-                        .expect(&format!("cannot write {}!", frame_name));
+                    let frame_name = format!("frame{:06}.png", frame_cnt);
+                    let path = Path::new(&frame_name);
+                    let file = File::create(path).expect(&format!("Cannot create {}", frame_name));
+                    let writer = BufWriter::new(file);
+                    let mut encoder = png::Encoder::new(writer, *w, *h);
+                    encoder.set_color(png::ColorType::RGB);
+                    encoder.set_depth(png::BitDepth::Eight);
+                    let mut true_writer = encoder.write_header().unwrap();
+                    true_writer.write_image_data(&framebuffer).unwrap();
                     info!("Written {}", frame_name);
                     let now = Instant::now();
                     if now.duration_since(*last_time).as_secs_f64() >= 1.0 {
