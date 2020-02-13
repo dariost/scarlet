@@ -225,7 +225,12 @@ The idea behind SSR is to calculate, for each point, the reflection direction us
 The first phase tries to find if the reflected ray collides with something within the view-space unit cube or not. It does so by applying a technique called \textit{binary exponentiation}: it starts with a small $\delta$ and advances the ray of this $\delta$ in the ray direction; it checks for intersection: if it does intersect, this phase finishes, otherwise it repeats the process up to \texttt{MAX\_ITERATIONS} times doubling $\delta$ each time. If at some point the ray goes outside the unit cube, it resets its position to the previous one and resets $\delta$ to its initial value. The implementation used in \textsc{Scarlet} can be found in listing \ref{ssr:phase1}.
 
 \begin{listing}
-	\inputminted[tabsize=2, frame=lines,framesep=2mm,baselinestretch=1.2,bgcolor=LightGray,fontsize=\footnotesize,linenos]{glsl}{code/phase1.frag}
+	\inputminted[tabsize=2, frame=lines,
+framesep=2mm,
+baselinestretch=1.2,
+bgcolor=LightGray,
+fontsize=\footnotesize,
+linenos]{glsl}{code/phase1.frag}
 	\caption{SSR - Phase 1}
 	\label{ssr:phase1}
 \end{listing}
@@ -234,7 +239,12 @@ The first phase tries to find if the reflected ray collides with something withi
 Once the previous phase has found an intersection point with the geometry, this phase checks if there is some object that is nearer to the viewer that needs to be reflected. To check this, the space between the intersection point and the point we're calculating the reflection is partitioned in \texttt{MAX\_ITERATIONS} chunks, and each of the is tested for intersection. The nearest that tests positive for intersection will be selected as this phase output. Code for this phase can be found in listing \ref{ssr:phase2}.
 
 \begin{listing}
-	\inputminted[tabsize=2, frame=lines,framesep=2mm,baselinestretch=1.2,bgcolor=LightGray,fontsize=\footnotesize,linenos]{glsl}{code/phase2.frag}
+	\inputminted[tabsize=2, frame=lines,
+framesep=2mm,
+baselinestretch=1.2,
+bgcolor=LightGray,
+fontsize=\footnotesize,
+linenos]{glsl}{code/phase2.frag}
 	\caption{SSR - Phase 2}
 	\label{ssr:phase2}
 \end{listing}
@@ -243,7 +253,12 @@ Once the previous phase has found an intersection point with the geometry, this 
 At this point we have the starting point and one other point that we know intersects with some object, at this point, since there is an high probability that the functions that tells us if there is an intersection at some point between these two points is convex, we can binary search (allowing up to \texttt{MAX\_ITERATIONS} iterations to gain precision) where is the nearest point that intersects. We will output this point for the input of the next phase. Code for this phase can be found in listing \ref{ssr:phase3}.
 
 \begin{listing}
-	\inputminted[tabsize=2, frame=lines,framesep=2mm,baselinestretch=1.2,bgcolor=LightGray,fontsize=\footnotesize,linenos]{glsl}{code/phase3.frag}
+	\inputminted[tabsize=2, frame=lines,
+framesep=2mm,
+baselinestretch=1.2,
+bgcolor=LightGray,
+fontsize=\footnotesize,
+linenos]{glsl}{code/phase3.frag}
 	\caption{SSR - Phase 3}
 	\label{ssr:phase3}
 \end{listing}
@@ -252,16 +267,43 @@ At this point we have the starting point and one other point that we know inters
 In the final phase we want to check if we missed some fine detail of the object that might be non-convex. To do this, we start from the point found in the last phase and backtrack using steps of the initial $\delta$ size, up to \texttt{MAX\_ITERATIONS} times. If there is an intersection with something, we'll output the last point that tested positive, otherwise we'll output the input point. Code for this phase can be found in listing \ref{ssr:phase4}.
 
 \begin{listing}
-	\inputminted[tabsize=2, frame=lines,framesep=2mm,baselinestretch=1.2,bgcolor=LightGray,fontsize=\footnotesize,linenos]{glsl}{code/phase4.frag}
+	\inputminted[tabsize=2, frame=lines,
+framesep=2mm,
+baselinestretch=1.2,
+bgcolor=LightGray,
+fontsize=\footnotesize,
+linenos]{glsl}{code/phase4.frag}
 	\caption{SSR - Phase 4}
 	\label{ssr:phase4}
 \end{listing}
 
 \section{Static viewer}
-
+To import and see a, optionally animated, scene with \textsc{Scarlet} using the \textit{static viewer} tool. In order to build the tool the command to issue is:
+\begin{minted}{console}
+$ cargo build --release --example static_viewer
+\end{minted}
+This will build the \textsc{Scarlet} scene viewer, that can then be used to import and see a scene by passing it as a CLI argument, for example by issuing:
+\begin{minted}{console}
+$ cargo run --release --example static_viewer scene/room.glb
+\end{minted}
+When the program is opened it will show the scene until closed, and if there is an animation il will loop indefinitely. By default the final rendered frame is shown, but by using the left and right arrows on the keyboard different \textit{G-Buffer}s will be shown.
 \section{Video exporter}
+The \textit{video exporter} tool has been created to aid the creation of videos from scene animations. The CLI works in the same way as the viewer, but when run it will output the frames in PNG format.
+
+An example of usage:
+\begin{minted}{console}
+$ cargo build --release --example exporter
+$ cargo run --release --example exporter scene/room_animated.glb
+\end{minted}
 
 \section{Benchmark tool}
+The \textit{benchmark} tool has been created to benchmark the performance of \textsc{Scarlet} on an animated scene. It will render the animated scene and at regular intervals it will record the current FPS. At the end it will create a file called \texttt{benchmark.json} containing the information collected.
+
+An example of usage:
+\begin{minted}{console}
+$ cargo build --release --example bench
+$ cargo run --release --example bench scene/room_animated.glb
+\end{minted}
 
 \chapter{Evaluation}
 
