@@ -308,9 +308,9 @@ impl RenderPasses {
             gl::BindFramebuffer(gl::GL_FRAMEBUFFER, g_ssrfb);
             bind(
                 &mut g_ssr,
-                gl::GL_RGB,
-                gl::GL_RGB,
-                gl::GL_UNSIGNED_BYTE,
+                gl::GL_RGBA16F,
+                gl::GL_RGBA,
+                gl::GL_HALF_FLOAT,
                 gl::GL_COLOR_ATTACHMENT0,
             );
             let draw_buffers = [gl::GL_COLOR_ATTACHMENT0];
@@ -438,6 +438,18 @@ impl RenderPasses {
 
     pub fn bind_ssr(&self, shader: &mut Shader) {
         unsafe {
+            gl::BindTexture(gl::GL_TEXTURE_2D, self.g_ssr);
+            gl::TexParameteri(
+                gl::GL_TEXTURE_2D,
+                gl::GL_TEXTURE_MIN_FILTER,
+                gl::GL_NEAREST as gl::GLint,
+            );
+            gl::TexParameteri(
+                gl::GL_TEXTURE_2D,
+                gl::GL_TEXTURE_MAG_FILTER,
+                gl::GL_NEAREST as gl::GLint,
+            );
+            gl::BindTexture(gl::GL_TEXTURE_2D, 0);
             gl::BindFramebuffer(gl::GL_FRAMEBUFFER, self.g_ssrfb);
             gl::Clear(gl::GL_COLOR_BUFFER_BIT | gl::GL_DEPTH_BUFFER_BIT);
             shader.uniform1i("position_sampler", 0);
@@ -452,17 +464,6 @@ impl RenderPasses {
             gl::BindTexture(gl::GL_TEXTURE_2D, self.g_normal);
             gl::ActiveTexture(gl::GL_TEXTURE2);
             gl::BindTexture(gl::GL_TEXTURE_2D, self.g_pbr);
-            gl::GenerateMipmap(gl::GL_TEXTURE_2D);
-            gl::TexParameteri(
-                gl::GL_TEXTURE_2D,
-                gl::GL_TEXTURE_MIN_FILTER,
-                gl::GL_LINEAR_MIPMAP_LINEAR as gl::GLint,
-            );
-            gl::TexParameteri(
-                gl::GL_TEXTURE_2D,
-                gl::GL_TEXTURE_MAG_FILTER,
-                gl::GL_LINEAR as gl::GLint,
-            );
             gl::ActiveTexture(gl::GL_TEXTURE3);
             gl::BindTexture(gl::GL_TEXTURE_2D, self.g_metalness);
             gl::ActiveTexture(gl::GL_TEXTURE4);
@@ -480,13 +481,37 @@ impl RenderPasses {
             shader.uniform1i("ssr_sampler", 0);
             shader.uniform1i("metalness_sampler", 1);
             shader.uniform1i("pbr_sampler", 2);
+            shader.uniform1i("roughness_sampler", 3);
             gl::ActiveTexture(gl::GL_TEXTURE0);
             gl::BindTexture(gl::GL_TEXTURE_2D, self.g_ssr);
+            gl::GenerateMipmap(gl::GL_TEXTURE_2D);
+            gl::TexParameteri(
+                gl::GL_TEXTURE_2D,
+                gl::GL_TEXTURE_MIN_FILTER,
+                gl::GL_LINEAR_MIPMAP_LINEAR as gl::GLint,
+            );
+            gl::TexParameteri(
+                gl::GL_TEXTURE_2D,
+                gl::GL_TEXTURE_MAG_FILTER,
+                gl::GL_LINEAR as gl::GLint,
+            );
             gl::ActiveTexture(gl::GL_TEXTURE1);
             gl::BindTexture(gl::GL_TEXTURE_2D, self.g_metalness);
             gl::ActiveTexture(gl::GL_TEXTURE2);
             gl::BindTexture(gl::GL_TEXTURE_2D, self.g_pbr);
-            gl::ActiveTexture(gl::GL_TEXTURE0);
+            gl::GenerateMipmap(gl::GL_TEXTURE_2D);
+            gl::TexParameteri(
+                gl::GL_TEXTURE_2D,
+                gl::GL_TEXTURE_MIN_FILTER,
+                gl::GL_LINEAR_MIPMAP_LINEAR as gl::GLint,
+            );
+            gl::TexParameteri(
+                gl::GL_TEXTURE_2D,
+                gl::GL_TEXTURE_MAG_FILTER,
+                gl::GL_LINEAR as gl::GLint,
+            );
+            gl::ActiveTexture(gl::GL_TEXTURE3);
+            gl::BindTexture(gl::GL_TEXTURE_2D, self.g_roughness);
             gl::ActiveTexture(gl::GL_TEXTURE0);
         }
     }

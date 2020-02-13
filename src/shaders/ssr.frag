@@ -1,6 +1,6 @@
 #version 300 es
 
-precision mediump float;
+precision highp float;
 
 #define MAX_ITERATIONS 64
 
@@ -67,17 +67,15 @@ vec4 textureBicubicLod(sampler2D sampler, vec2 texCoords, float level) {
     return mix(lower, upper, gap);
 }
 
-float tahh(float x) {
-    float e2z = exp(2.0 * x);
-    return (e2z - 1.0) / (e2z + 1.0);
-}
-
 vec3 ray_march(vec3 pos, vec3 dir, float rough_factor) {
+    const vec3 MISSING = vec3(0.0, 0.0, 1e20);
     vec3 original_pos = pos;
     float steps = 0.0;
-    const float STEP_FACTOR = 1e-3;
-    float INITIAL_STEP_SIZE = max(length(camera * vec4(dir * STEP_FACTOR, 0.0)), STEP_FACTOR);
+    const float STEP_FACTOR = pow(2.0, -float(MAX_ITERATIONS) / 4.0);
+    vec4 camera_vec = camera * vec4(dir * STEP_FACTOR, 0.0);
+    float INITIAL_STEP_SIZE = length(camera_vec);
     float step_size = INITIAL_STEP_SIZE;
+    float GAP = 5e-3;
     bool ok = false;
     for(int i = 0; i < MAX_ITERATIONS; i++) {
         pos += dir * step_size;
@@ -97,7 +95,7 @@ vec3 ray_march(vec3 pos, vec3 dir, float rough_factor) {
         step_size *= 2.0;
     }
     if(!ok) {
-        return vec3(0.0, 0.0, 0.0);
+        return MISSING;
     }
     vec3 nextpos = pos;
     for(int i = MAX_ITERATIONS; i > 0; i--) {
@@ -151,20 +149,21 @@ vec3 ray_march(vec3 pos, vec3 dir, float rough_factor) {
     vec4 ray_view_homo = camera * vec4(final, 1.0);
     vec3 view = ray_view_homo.xyz / ray_view_homo.w;
     if(!(abs(view.x) <= 1.0 && abs(view.y) <= 1.0 && abs(view.z) <= 1.0)) {
-        return vec3(0.0, 0.0, 0.0);
+        return MISSING;
     }
     vec2 coord = vec2(view.x + 1.0, view.y + 1.0) / 2.0;
     float depth = texture(depth_sampler, coord).r;
-    if(view.z >= depth) {
+    if(view.z - depth >= 0.0 && view.z - depth < GAP) {
         float camdist = length(camera_pos - final);
         float dist = length(original_pos - final);
         float beta = pow(dist / camdist, 1.0 / log(camdist + 1.0));
         float alpha = 4.0 * pow(0.5 - rough_factor, 2.0);
         ivec2 ts = textureSize(pbr_sampler, 0);
         float ms = log2(float(min(ts.x, ts.y))) - 3.0;
-        return textureBicubicLod(pbr_sampler, coord, (beta * (1.0 - alpha) + rough_factor * alpha) * ms).rgb;
+        return vec3(coord, dist);
+        //return textureBicubicLod(pbr_sampler, coord, (beta * (1.0 - alpha) + rough_factor * alpha) * ms).rgb;
     } else {
-        return vec3(0.0, 0.0, 0.0);
+        return MISSING;
     }
 }
 
@@ -177,6 +176,6 @@ void main() {
     float depth = texture(depth_sampler, tex_coord).r;
     vec3 ray_pos = position;
     vec3 ray_dir = reflect(position - camera_pos, normal);
-    vec3 out_color = ray_march(ray_pos, ray_dir, roughness);
+    vec3 out_color = ray_march(ray_pos, normalize(ray_dir), roughness);
     color_output = vec4(out_color, 1.0);
 }
