@@ -75,8 +75,8 @@ float tahh(float x) {
 vec3 ray_march(vec3 pos, vec3 dir, float rough_factor) {
     vec3 original_pos = pos;
     float steps = 0.0;
-    const float STEP_FACTOR = 1e-3;
-    float INITIAL_STEP_SIZE = max(length(camera * vec4(dir * STEP_FACTOR, 0.0)), STEP_FACTOR);
+    const float STEP_FACTOR = pow(2.0, -float(MAX_ITERATIONS) / 4.0);
+    float INITIAL_STEP_SIZE = length(camera * vec4(dir * STEP_FACTOR, 0.0));
     float step_size = INITIAL_STEP_SIZE;
     bool ok = false;
     for(int i = 0; i < MAX_ITERATIONS; i++) {

@@ -1010,7 +1010,6 @@ impl Scene {
                         let prev = animap.range(0..=tick).rev().nth(0).unwrap_or((&0, &orig));
                         let next = animap
                             .range((Excluded(&tick), Included(&u64::max_value())))
-                            .rev()
                             .nth(0)
                             .unwrap_or_else(|| animap.iter().rev().nth(0).unwrap_or((&0, &orig)));
                         let alpha = if next.0 - prev.0 == 0 {
@@ -1024,7 +1023,7 @@ impl Scene {
             }
             animation
         }
-        const MAX_LIGHTS: usize = 32;
+        const MAX_LIGHTS: usize = 64;
         self.passes.bind();
         self.prepare_shader.activate();
         let mut light_info = Vec::new();
