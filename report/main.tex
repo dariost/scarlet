@@ -306,6 +306,24 @@ $ cargo run --release --example bench scene/room_animated.glb
 \end{minted}
 
 \chapter{Evaluation}
+In order to evaluate the performance of \textsc{Scarlet} at various levels of SSR precision, a benchmark scene has been created, called \textsc{Scarlet--Room}.
+
+\begin{figure}[htp]
+	\centering
+	\includegraphics[width=\textwidth]{benchmark/benchmark.png}
+	\caption{A frame from \textsc{Scarlet--Room} benchmark}
+	\label{eval:example}
+\end{figure}
+
+The benchmark has been designed to highlight specific features of \textsc{Scarlet}, including: scene graph animations, deferred rendering and screen space reflection. To give an evaluation of the performance and the quality of SSR, the benchmark has been run on two machines varying the SSR quality parameter \texttt{MAX\_ITERATIONS}. The machines used to run the benchmark are:
+
+\begin{center}
+	\begin{tabular}{ | c | c | c | c | } \hline
+		Name & CPU & RAM & GPU \\ \hline
+		M1 & Intel 6700K & 64 GiB DDR4 2133 MHz & NVIDIA GTX 980M \\
+		M2 & Intel 7100U & 20 GiB DDR4 2133 MHz & Intel HD Graphics 620 \\
+		\hline \end{tabular}
+\end{center}
 
 \chapter{Conclusions}
 
