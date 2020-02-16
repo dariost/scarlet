@@ -5,6 +5,7 @@
 \usepackage[svgnames]{xcolor}
 \usepackage{graphicx}
 \usepackage{minted}
+\usepackage{multirow}
 
 \begin{document}
 \title{\textsc{Scarlet} \\ \large An OpenGL renderer implementing screen space reflection in a metallic workflow deferred rendering pipeline}
@@ -325,6 +326,55 @@ The benchmark has been designed to highlight specific features of \textsc{Scarle
 		\hline \end{tabular}
 \end{center}
 
-\chapter{Conclusions}
+The benchmark has been run using the same resolution on all machines, which is $1920 \times 1080$. The benchmark has been run multiple times varying the \texttt{MAX\_ITERATIONS} parameter to the values $4$, $16$ and $64$.
+
+\begin{figure}[htp]
+	\centering
+	\includegraphics[width=\textwidth]{benchmark/4.png}
+	\caption{A frame from \textsc{Scarlet--Room} with $\texttt{MAX\_ITERATIONS} = 4$}
+	\label{eval:4}
+\end{figure}
+
+\begin{figure}[htp]
+	\centering
+	\includegraphics[width=\textwidth]{benchmark/16.png}
+	\caption{A frame from \textsc{Scarlet--Room} with $\texttt{MAX\_ITERATIONS} = 16$}
+	\label{eval:16}
+\end{figure}
+
+\begin{figure}[htp]
+	\centering
+	\includegraphics[width=\textwidth]{benchmark/64.png}
+	\caption{A frame from \textsc{Scarlet--Room} with $\texttt{MAX\_ITERATIONS} = 64$}
+	\label{eval:64}
+\end{figure}
+
+As shown in figures \ref{eval:4}, \ref{eval:16} and \ref{eval:64} varying the \texttt{MAX\_ITERATIONS} parameter produces very different results regarding the precision of reflections. A full pre-rendered video of the benchmark can be found on YouTube at \url{https://www.youtube.com/watch?v=wf36zKOmeuM}. This video can be used to gain an insight of how the benchmark looks like. It has been rendered at resolution $3840 \times 2160$, 60 frames per second, with $\texttt{MAX\_ITERATIONS} = 64$.
+
+We can predict that producing the higher quality images, obtained by setting an higher value of \texttt{MAX\_ITERATIONS}, will likely have an impact on performance. The benchmark results will show how much of an impact there is:
+
+\begin{center}
+	\begin{tabular}{|c|c|c|c|c|}
+		\hline
+		\textbf{Machine}    & \textbf{\texttt{MAX\_ITERATIONS}} & \textbf{Avg. FPS} & \textbf{Min. FPS} & \textbf{Max. FPS} \\ \hline
+		\multirow{3}{*}{M1} & 4                                 & 90.77             & 80.69             & 94.73             \\
+		& 16                                & 80.41             & 70.95             & 85.21             \\
+		& 64                                & 54.20             & 46.77             & 61.53             \\ \hline
+		\multirow{3}{*}{M2} & 4                                 & \phantom{0}7.79   & \phantom{0}7.52   & 14.98             \\
+		& 16                                & \phantom{0}7.05   & \phantom{0}6.69   & 13.76             \\
+		& 64                                & \phantom{0}5.16   & \phantom{0}4.75   & 10.69             \\ \hline
+	\end{tabular}
+\end{center}
+
+\section{Results}
+
+\begin{figure}[htp]
+	\centering
+	\includegraphics[width=\textwidth]{benchmark/benchmark.eps}
+	\caption{Benchmark results}
+	\label{eval:graph}
+\end{figure}
+
+
 
 \end{document}
