@@ -351,9 +351,15 @@ The benchmark has been run using the same resolution on all machines, which is $
 
 As shown in figures \ref{eval:4}, \ref{eval:16} and \ref{eval:64} varying the \texttt{MAX\_ITERATIONS} parameter produces very different results regarding the precision of reflections. A full pre-rendered video of the benchmark can be found on YouTube at \url{https://www.youtube.com/watch?v=wf36zKOmeuM}. This video can be used to gain an insight of how the benchmark looks like. It has been rendered at resolution $3840 \times 2160$, 60 frames per second, with $\texttt{MAX\_ITERATIONS} = 64$.
 
-We can predict that producing the higher quality images, obtained by setting an higher value of \texttt{MAX\_ITERATIONS}, will likely have an impact on performance. The benchmark results will show how much of an impact there is:
+We can predict that producing the higher quality images, obtained by setting an higher value of \texttt{MAX\_ITERATIONS}, will likely have an impact on performance. The benchmark results will show how much of an impact there is.
 
-\begin{center}
+\section{Results}
+As we can see from both table \ref{eval:table} and figure \ref{eval:graph} there is an impact of performance when using an higher value of \texttt{MAX\_ITERATIONS}. As also expected, machine \texttt{M1} performs much better than machine \texttt{M2}, having a much more powerful GPU. The interesting part is that we see variation of FPS during the benchmark with machine \texttt{M1} but not with machine \texttt{M2}. This is likely because NVIDIA's OpenGL driver does some optimizations that reduce computation times under some conditions and Intel's OpenGL driver does not.
+
+Given the results, we can conclude that using a good GPU (like the one of machine \texttt{M1}) we can obtain decent reflections using the screen space reflections technique if we want to target 60 FPS by using a \texttt{MAX\_ITERATIONS} value of 16. If we want to target a lower FPS target, like 30, we can get very good reflections by setting \texttt{MAX\_ITERATIONS} to 64. If we have a very low-end GPU instead (like the one of machine \texttt{M2}) we can't afford using this kind of technique, and we have to give up reflections or use another cheaper technique.
+
+\begin{table}
+	\centering
 	\begin{tabular}{|c|c|c|c|c|}
 		\hline
 		\textbf{Machine}    & \textbf{\texttt{MAX\_ITERATIONS}} & \textbf{Avg. FPS} & \textbf{Min. FPS} & \textbf{Max. FPS} \\ \hline
@@ -364,14 +370,14 @@ We can predict that producing the higher quality images, obtained by setting an 
 		& 16                                & \phantom{0}7.05   & \phantom{0}6.69   & 13.76             \\
 		& 64                                & \phantom{0}5.16   & \phantom{0}4.75   & 10.69             \\ \hline
 	\end{tabular}
-\end{center}
-
-\section{Results}
+	\caption{Benchmark results}
+	\label{eval:table}
+\end{table}
 
 \begin{figure}[htp]
 	\centering
 	\includegraphics[width=\textwidth]{benchmark/benchmark.eps}
-	\caption{Benchmark results}
+	\caption{Benchmark timeline results}
 	\label{eval:graph}
 \end{figure}
 
