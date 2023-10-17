@@ -124,14 +124,14 @@ impl Application {
 
     pub fn with_options(options: &ApplicationOptions) -> Application {
         let event_loop = EventLoop::new();
-        let primary_monitor = event_loop.primary_monitor();
+        let primary_monitor = event_loop.primary_monitor().expect("No monitor found");
         let window_builder = WindowBuilder::new();
         let window_builder = window_builder.with_title(&options.title);
         let window_builder = if options.fullscreen {
             window_builder
                 .with_inner_size(primary_monitor.size())
                 .with_decorations(false)
-                .with_fullscreen(Some(Fullscreen::Borderless(primary_monitor)))
+                .with_fullscreen(Some(Fullscreen::Borderless(Some(primary_monitor))))
         } else {
             window_builder.with_inner_size(LogicalSize::new(options.width, options.height))
         };

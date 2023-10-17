@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 glad-gles2 = { path = "deps/glad-gles2" }
-glutin = "0.23"
+glutin = "0.29"
 log = "0.4"
 pretty_env_logger = "0.4"
 nalgebra = "0.19"
